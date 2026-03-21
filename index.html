@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalCast P2P Streamer</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --card-bg: #1a1d24;
+            --primary: #e5a00d; 
+            --text: #f0f0f0;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color); color: var(--text);
+            overflow: hidden;
+        }
+
+        .view {
+            display: none; flex-direction: column; align-items: center;
+            justify-content: center; width: 100%; height: 100%; text-align: center;
+        }
+        .view.active { display: flex; }
+
+        h1, h2 { margin-bottom: 20px; font-weight: 300; }
+
+        .focusable {
+            background: var(--card-bg); color: var(--text); border: none;
+            padding: 15px 30px; margin: 10px; font-size: 1.2rem; border-radius: 8px;
+            cursor: pointer; transition: transform 0.2s, background 0.2s;
+            outline: none;
+        }
+        .focusable:focus {
+            transform: scale(1.05);
+            background: #2a2d35;
+            box-shadow: 0 0 0 4px var(--primary);
+        }
+
+        input[type="text"] {
+            padding: 15px; font-size: 1.5rem; text-align: center;
+            border-radius: 8px; border: none; outline: none; margin-bottom: 20px;
+            width: 200px; background: #2a2d35; color: white; letter-spacing: 5px;
+        }
+
+        .file-list {
+            width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 10px; padding: 20px;
+        }
+        .file-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--card-bg); padding: 15px 20px; border-radius: 8px;
+            text-align: left;
+        }
+
+        /* --- Loading / Transfer Screen --- */
+        #transfer-bar-container {
+            width: 60%; height: 20px; background: #333; border-radius: 10px;
+            overflow: hidden; margin: 20px 0;
+        }
+        #transfer-progress {
+            width: 0%; height: 100%; background: var(--primary);
+            transition: width 0.1s linear;
+        }
+
+        /* --- Player View --- */
+        #tv-player-view { background: black; position: relative; }
+        video { width: 100%; height: 100%; object-fit: contain; }
+        
+        .player-controls {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: linear-gradient(transparent, rgba(0,0,0,0.9));
+            padding: 40px 20px 20px; display: flex; flex-direction: column;
+            transition: opacity 0.3s; opacity: 1;
+        }
+        .player-controls.hidden { opacity: 0; pointer-events: none; }
+        
+        .controls-row { display: flex; justify-content: center; gap: 20px; margin-top: 15px; }
+        .control-btn {
+            background: transparent; color: white; border: none; font-size: 2rem;
+            padding: 10px 20px; border-radius: 8px; outline: none;
+        }
+        .control-btn:focus { background: rgba(255,255,255,0.2); box-shadow: 0 0 0 3px var(--primary); }
+
+        .progress-bar {
+            width: 90%; height: 8px; background: #333; margin: 0 auto;
+            border-radius: 4px; position: relative; overflow: hidden;
+        }
+        .progress-current { position: absolute; height: 100%; background: var(--primary); width: 0%; left: 0; top: 0; transition: width 0.1s; }
+
+        .loader { border: 4px solid #333; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #error-msg { color: #ff4c4c; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="selection-view" class="view active">
+        <h1>Select Device Type</h1>
+        <button class="focusable" onclick="initTVMode()">📺 This is a TV (Firestick)</button>
+        <button class="focusable" onclick="initPhoneMode()">📱 This is a Smartphone</button>
+    </div>
+
+    <div id="tv-code-view" class="view">
+        <h2>Open app on Smartphone and enter code:</h2>
+        <h1 id="tv-code" style="font-size: 4rem; letter-spacing: 10px; color: var(--primary);">---</h1>
+        <div class="loader"></div>
+        <p>Waiting for connection...</p>
+    </div>
+
+    <div id="phone-connect-view" class="view">
+        <h2>Enter TV Code</h2>
+        <input type="text" id="join-code" maxlength="6" placeholder="000000">
+        <button class="focusable" onclick="connectToTV()">Connect to TV</button>
+        <div id="error-msg"></div>
+    </div>
+
+    <div id="phone-library-view" class="view">
+        <h2>Connected to TV!</h2>
+        <p>Select media files to share.</p>
+        <input type="file" id="file-input" accept="video/*" multiple style="display:none;">
+        <button class="focusable" onclick="document.getElementById('file-input').click()">📁 Add Videos</button>
+        <div class="file-list" id="phone-file-list"></div>
+        <div id="phone-status-msg" style="margin-top:20px; color: var(--primary);"></div>
+    </div>
+
+    <div id="tv-library-view" class="view">
+        <h2>Shared Library</h2>
+        <div class="file-list" id="tv-file-list">
+            <p>Waiting for files from smartphone...</p>
+        </div>
+    </div>
+
+    <!-- New Loading/Transfer View -->
+    <div id="tv-transfer-view" class="view">
+        <h2 id="transfer-filename">Transferring file...</h2>
+        <div id="transfer-bar-container">
+            <div id="transfer-progress"></div>
+        </div>
+        <p id="transfer-stats">0% (0MB / 0MB)</p>
+        <button class="focusable" onclick="cancelTransfer()">Cancel</button>
+    </div>
+
+    <div id="tv-player-view" class="view">
+        <video id="video-player" controlslist="nodownload"></video>
+        <div class="player-controls" id="player-controls">
+            <h3 id="now-playing-title" style="margin-left: 5%; margin-bottom: 10px; font-weight: normal; text-align: left;">Title</h3>
+            <div class="progress-bar">
+                <div class="progress-current" id="progress-current"></div>
+            </div>
+            <div class="controls-row">
+                <button class="focusable control-btn" onclick="closePlayer()" id="btn-back">🔙</button>
+                <button class="focusable control-btn" onclick="seekVideo(-10)">⏪</button>
+                <button class="focusable control-btn" onclick="togglePlay()" id="btn-play">⏯️</button>
+                <button class="focusable control-btn" onclick="seekVideo(10)">⏩</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let peer = null, conn = null, isTV = false;
+        let myFiles = []; 
+        let currentFileId = null, totalFileSize = 0, receivedChunks = [];
+        let nextChunkStart = 0;
+        const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunks for reliability
+
+        const video = document.getElementById('video-player');
+        const progressCurrent = document.getElementById('progress-current');
+
+        function switchView(viewId) {
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            updateFocusable();
+        }
+
+        function updateFocusable() {
+            const activeView = document.querySelector('.view.active');
+            if (!activeView) return;
+            const focusables = Array.from(activeView.querySelectorAll('.focusable'));
+            if (focusables.length > 0) focusables[0].focus();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!isTV) return;
+            const activeView = document.querySelector('.view.active');
+            const focusables = Array.from(activeView.querySelectorAll('.focusable'));
+            let index = focusables.indexOf(document.activeElement);
+
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                index = (index + 1) % focusables.length;
+                if (focusables[index]) focusables[index].focus();
+                showControls();
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                index = (index - 1 + focusables.length) % focusables.length;
+                if (focusables[index]) focusables[index].focus();
+                showControls();
+            } else if (e.key === 'Backspace' || e.key === 'Escape') {
+                if (activeView.id === 'tv-player-view') closePlayer();
+            }
+        });
+
+        function initTVMode() {
+            isTV = true;
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            document.getElementById('tv-code').innerText = code;
+            peer = new Peer(code);
+            peer.on('open', () => switchView('tv-code-view'));
+            peer.on('connection', c => { 
+                conn = c; 
+                setupTVConnection(); 
+            });
+        }
+
+        function initPhoneMode() {
+            isTV = false;
+            peer = new Peer();
+            switchView('phone-connect-view');
+        }
+
+        function connectToTV() {
+            const code = document.getElementById('join-code').value;
+            conn = peer.connect(code, { reliable: true });
+            conn.on('open', () => { 
+                setupPhoneConnection(); 
+                switchView('phone-library-view'); 
+            });
+        }
+
+        function setupPhoneConnection() {
+            document.getElementById('file-input').addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                files.forEach(f => myFiles.push(f));
+                document.getElementById('phone-file-list').innerHTML = myFiles.map(f => `<div class="file-item">${f.name}</div>`).join('');
+                conn.send({ type: 'library', files: myFiles.map((f, i) => ({ id: i, name: f.name, size: f.size, type: f.type })) });
+            });
+
+            conn.on('data', data => {
+                if (data.type === 'req') {
+                    const file = myFiles[data.id];
+                    if (!file) return;
+                    
+                    const slice = file.slice(data.start, Math.min(data.start + CHUNK_SIZE, file.size));
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        conn.send({ 
+                            type: 'data', 
+                            id: data.id, 
+                            start: data.start, 
+                            buffer: reader.result 
+                        });
+                    };
+                    reader.readAsArrayBuffer(slice);
+                    document.getElementById('phone-status-msg').innerText = `Sending: ${file.name}...`;
+                }
+            });
+        }
+
+        function setupTVConnection() {
+            switchView('tv-library-view');
+            conn.on('data', data => {
+                if (data.type === 'library') {
+                    const list = document.getElementById('tv-file-list');
+                    list.innerHTML = data.files.map(f => `<button class="focusable file-item" onclick='prepareTransfer(${JSON.stringify(f)})'>🎬 ${f.name}</button>`).join('');
+                    updateFocusable();
+                }
+                if (data.type === 'data') {
+                    // Only accept data for the current transfer
+                    if (data.id !== currentFileId) return;
+
+                    receivedChunks.push(data.buffer);
+                    nextChunkStart += data.buffer.byteLength;
+                    
+                    const progress = (nextChunkStart / totalFileSize) * 100;
+                    document.getElementById('transfer-progress').style.width = progress + '%';
+                    document.getElementById('transfer-stats').innerText = 
+                        `${Math.floor(progress)}% (${(nextChunkStart / 1024 / 1024).toFixed(1)}MB / ${(totalFileSize / 1024 / 1024).toFixed(1)}MB)`;
+                    
+                    if (nextChunkStart < totalFileSize) {
+                        fetchNext();
+                    } else {
+                        finishTransfer();
+                    }
+                }
+            });
+        }
+
+        function prepareTransfer(file) {
+            currentFileId = file.id;
+            totalFileSize = file.size;
+            receivedChunks = [];
+            nextChunkStart = 0;
+            
+            document.getElementById('transfer-filename').innerText = `Downloading ${file.name}...`;
+            document.getElementById('transfer-progress').style.width = '0%';
+            document.getElementById('now-playing-title').innerText = file.name;
+            
+            switchView('tv-transfer-view');
+            fetchNext();
+        }
+
+        function finishTransfer() {
+            const fullBlob = new Blob(receivedChunks, { type: 'video/mp4' });
+            video.src = URL.createObjectURL(fullBlob);
+            switchView('tv-player-view');
+            video.play().catch(e => console.log("Auto-play blocked:", e));
+        }
+
+        function fetchNext() {
+            if (currentFileId === null) return;
+            conn.send({ type: 'req', id: currentFileId, start: nextChunkStart });
+        }
+
+        function cancelTransfer() {
+            currentFileId = null;
+            receivedChunks = [];
+            switchView('tv-library-view');
+        }
+
+        function togglePlay() { 
+            if (!video.src) return;
+            if (video.paused) {
+                video.play().catch(e => console.log(e));
+            } else {
+                video.pause();
+            }
+        }
+
+        function seekVideo(s) { 
+            if (video.src) video.currentTime += s; 
+        }
+        
+        function closePlayer() {
+            video.pause();
+            if (video.src) {
+                URL.revokeObjectURL(video.src);
+                video.src = "";
+            }
+            switchView('tv-library-view');
+        }
+
+        video.addEventListener('timeupdate', () => {
+            if (video.duration) {
+                progressCurrent.style.width = (video.currentTime / video.duration * 100) + '%';
+            }
+        });
+
+        let timeout;
+        function showControls() {
+            document.getElementById('player-controls').classList.remove('hidden');
+            clearTimeout(timeout);
+            timeout = setTimeout(() => { 
+                if(!video.paused && document.activeElement.id !== 'btn-play') {
+                    document.getElementById('player-controls').classList.add('hidden');
+                }
+            }, 3000);
+        }
+        
+        video.addEventListener('play', () => { document.getElementById('btn-play').innerText = '⏸️'; showControls(); });
+        video.addEventListener('pause', () => { document.getElementById('btn-play').innerText = '⏯️'; showControls(); });
+
+    </script>
+</body>
+</html>
