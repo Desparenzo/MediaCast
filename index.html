@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Standing Viewport - Fixed Calibrated</title>
+    <title>Compass Only Panning</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -16,39 +16,28 @@
         }
         .overlay-btn {
             pointer-events: auto; margin-top: 45vh; padding: 15px 35px;
-            background: rgba(0, 255, 0, 0.1); border: 2px solid #0f0;
+            background: rgba(0, 50, 0, 0.3); border: 2px solid #0f0;
             color: #0f0; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
             box-shadow: 0 0 20px rgba(0,255,0,0.2);
         }
         #hud {
-            position: absolute; bottom: 20px; left: 20px; color: #0f0; font-size: 11px;
-            background: rgba(0,20,0,0.85); padding: 12px; border: 1px solid #0f0;
+            position: absolute; bottom: 20px; left: 20px; color: #0f0; font-size: 12px;
+            background: rgba(0,20,0,0.9); padding: 12px; border: 1px solid #0f0;
             border-radius: 4px; line-height: 1.5;
         }
-        #reticle {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 50px; height: 50px; border: 1px solid rgba(0, 255, 0, 0.2); border-radius: 50%;
-        }
-        #reticle::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #0f0; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 8px #0f0; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <div id="reticle"></div>
-        <button id="start-btn" class="overlay-btn">Sync Neural Link</button>
-        <div id="hud">SYSTEM: STANDBY<br>AWAITING SENSOR CALIBRATION</div>
+        <button id="start-btn" class="overlay-btn">Enable Compass Access</button>
+        <div id="hud">COMPASS: OFFLINE</div>
     </div>
 
     <script>
         let scene, camera, renderer;
-        let sensor = { alpha: 0, beta: 0, gamma: 0 };
+        let heading = 0;
         const eyeHeight = 1.65;
-
-        // Correct world alignment for upright phone:
-        // By default, Three.js cameras look down -Z.
-        const q_world = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-        const q_sensor = new THREE.Quaternion();
 
         function init() {
             scene = new THREE.Scene();
@@ -57,64 +46,83 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            buildEnvironment();
+            buildRoom();
             
-            document.getElementById('start-btn').addEventListener('click', start);
+            document.getElementById('start-btn').addEventListener('click', startCompass);
             window.addEventListener('resize', onResize);
             
             animate();
         }
 
-        function buildEnvironment() {
+        function buildRoom() {
             const size = 20;
             const height = 8;
 
-            // Ground & Ceiling Grids
+            // Grid Floor
             const grid = new THREE.GridHelper(size, 20, 0x00ff00, 0x002200);
             scene.add(grid);
+
+            // Ceiling
             const ceil = grid.clone();
             ceil.position.y = height;
             scene.add(ceil);
 
-            // Room Wireframe with Illuminated Edges
+            // Illuminated Border Lines
             const boxGeom = new THREE.BoxGeometry(size, height, size);
             const edges = new THREE.EdgesGeometry(boxGeom);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 });
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 });
             const room = new THREE.LineSegments(edges, lineMat);
             room.position.y = height / 2;
             scene.add(room);
 
-            // Orientation Pillars (Visible markers for calibration)
-            const createPillar = (x, z, col) => {
-                const pGeom = new THREE.CylinderGeometry(0.1, 0.1, height, 12);
-                const pMat = new THREE.MeshBasicMaterial({ color: col });
-                const p = new THREE.Mesh(pGeom, pMat);
-                p.position.set(x, height/2, z);
-                scene.add(p);
+            // Cardinal Direction Markers
+            const createMarker = (x, z, col, label) => {
+                const geo = new THREE.BoxGeometry(0.5, height, 0.1);
+                const mat = new THREE.MeshBasicMaterial({ color: col, wireframe: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, height/2, z);
+                if (x !== 0) mesh.rotation.y = Math.PI / 2;
+                scene.add(mesh);
             };
 
-            createPillar(0, -9.8, 0xff0000); // NORTH (Red) - Looking straight ahead
-            createPillar(9.8, 0, 0x00ff00);  // EAST (Green)
-            createPillar(-9.8, 0, 0x0000ff); // WEST (Blue)
-            createPillar(0, 9.8, 0xffffff);  // SOUTH (White)
+            createMarker(0, -9.9, 0xff0000); // NORTH (Red)
+            createMarker(9.9, 0, 0x00ff00);  // EAST (Green)
+            createMarker(-9.9, 0, 0x0000ff); // WEST (Blue)
+            createMarker(0, 9.9, 0xffffff);  // SOUTH (White)
         }
 
-        async function start() {
+        async function startCompass() {
+            // Standard Compass access for iOS/Android
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const response = await DeviceOrientationEvent.requestPermission();
-                if (response !== 'granted') return;
+                if (response === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation, true);
+                }
+            } else {
+                // For Android or browsers that don't require explicit permission
+                window.addEventListener('deviceorientationabsolute', handleOrientation, true) || 
+                window.addEventListener('deviceorientation', handleOrientation, true);
             }
-            
-            window.addEventListener('deviceorientation', (e) => {
-                sensor.alpha = e.alpha || 0; // Yaw (Panning)
-                sensor.beta = e.beta || 0;   // Pitch (Look Up/Down)
-                sensor.gamma = e.gamma || 0; // Roll (Horizon Tilt)
-            }, true);
-
             document.getElementById('start-btn').style.display = 'none';
+        }
+
+        function handleOrientation(event) {
+            // Using webkitCompassHeading for iOS, alpha for Android absolute
+            if (event.webkitCompassHeading) {
+                // iOS: webkitCompassHeading is the degrees clockwise from North
+                heading = event.webkitCompassHeading;
+            } else if (event.absolute && event.alpha !== null) {
+                // Android: Alpha is degrees counter-clockwise from North
+                heading = 360 - event.alpha;
+            } else {
+                // Fallback (might not be North-aligned)
+                heading = 360 - (event.alpha || 0);
+            }
+
+            document.getElementById('hud').innerHTML = `COMPASS HEADING: ${Math.round(heading)}°`;
         }
 
         function onResize() {
@@ -126,31 +134,10 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // MAPPING AS REQUESTED:
-            // Yaw (Panning): Alpha
-            // Pitch (Up/Down): Beta (90 is default level)
-            // Roll (Tilt): Gamma (0 is default level)
-            
-            const yaw   = THREE.MathUtils.degToRad(sensor.alpha); 
-            const pitch = THREE.MathUtils.degToRad(sensor.beta - 90); // Offset by 90 so standing = 0
-            const roll  = THREE.MathUtils.degToRad(sensor.gamma); 
-
-            // 'YXZ' order: Rotate around Y (Yaw) first, then X (Pitch), then Z (Roll)
-            // This is the standard "Head" rotation logic.
-            const euler = new THREE.Euler(pitch, -yaw, -roll, 'YXZ');
-            q_sensor.setFromEuler(euler);
-
-            // Apply world offset and then sensor rotation
-            camera.quaternion.copy(q_world);
-            camera.quaternion.multiply(q_sensor);
-
-            // HUD Diagnostics
-            document.getElementById('hud').innerHTML = `
-                SENSORS: STABILIZED<br>
-                PAN (ALPHA): ${Math.round(sensor.alpha)}°<br>
-                LOOK (BETA): ${Math.round(sensor.beta)}° (90 is Neutral)<br>
-                ROLL (GAMMA): ${Math.round(sensor.gamma)}° (0 is Neutral)
-            `;
+            // Map compass heading to camera rotation
+            // We rotate around the Y axis (vertical axis)
+            const rad = THREE.MathUtils.degToRad(-heading);
+            camera.rotation.y = rad;
 
             renderer.render(scene, camera);
         }
