@@ -4,258 +4,522 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Viewfinder Simulator</title>
+    <title>AR Tactical Shooter - 5 Levels</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: monospace; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; touch-action: none; }
         canvas { display: block; }
-        #ui-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 20px;
-            z-index: 10;
-        }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,20,0,0.9); pointer-events: auto; }
+        
         .pointer-events-auto { pointer-events: auto; }
-        .hud-border {
-            border: 1px solid rgba(34, 197, 94, 0.3);
+        .hud-border { border: 1px solid rgba(34, 197, 94, 0.4); }
+        .hud-text { color: #22c55e; text-shadow: 0 0 5px #22c55e; }
+        .hud-text-red { color: #ef4444; text-shadow: 0 0 5px #ef4444; }
+        
+        /* Crosshairs */
+        #crosshair-dot {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 4px; height: 4px; background-color: #22c55e; border-radius: 50%;
+            box-shadow: 0 0 10px #22c55e;
         }
-        #video-preview {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 120px;
-            height: 90px;
-            border: 2px solid #22c55e;
-            border-radius: 8px;
-            object-fit: cover;
-            transform: scaleX(-1);
-            background: #111;
-        }
-        .scan-line {
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: #22c55e;
-            box-shadow: 0 0 15px #22c55e;
-            top: 0;
-            animation: scan 3s linear infinite;
+        #scope-reticle {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 60vw; height: 60vw; max-width: 400px; max-height: 400px;
+            border: 2px solid #22c55e; border-radius: 50%; box-shadow: 0 0 20px rgba(34,197,94,0.5);
             display: none;
         }
-        @keyframes scan {
-            from { top: 0%; }
-            to { top: 100%; }
+        #scope-reticle::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #22c55e; transform: translateY(-50%); }
+        #scope-reticle::after { content: ''; position: absolute; top: 0; left: 50%; width: 2px; height: 100%; background: #22c55e; transform: translateX(-50%); }
+
+        /* Controls */
+        .action-btn {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: rgba(34, 197, 94, 0.1); border: 3px solid rgba(34, 197, 94, 0.6);
+            display: flex; align-items: center; justify-content: center;
+            color: #22c55e; font-weight: bold; font-size: 14px; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+            transition: all 0.1s;
+        }
+        .action-btn:active { background: rgba(34, 197, 94, 0.4); transform: scale(0.95); }
+        .btn-red { border-color: rgba(239, 68, 68, 0.8); color: #ef4444; background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        .btn-red:active { background: rgba(239, 68, 68, 0.4); }
+
+        #btn-scope { position: absolute; bottom: 40px; left: 40px; }
+        #btn-fire { position: absolute; bottom: 40px; right: 40px; }
+
+        /* Announcements */
+        #announcement {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; font-size: 2rem; font-weight: bold; letter-spacing: 0.2em;
+            opacity: 0; transition: opacity 0.5s; text-shadow: 0 0 15px #22c55e;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui-overlay">
-        <div class="flex justify-between items-start">
-            <div class="text-green-500 bg-black/50 p-2 hud-border rounded">
-                <div class="text-xs">ALTITUDE: 1.78M</div>
-                <div id="gyro-data" class="text-[10px]">GYRO: WAITING...</div>
-            </div>
-            <div class="text-green-500 bg-black/50 p-2 hud-border rounded text-right">
-                <div class="text-xs">SYSTEM: ACTIVE</div>
-                <div class="text-[10px]">SCANNER v1.0.4</div>
-            </div>
-        </div>
-
-        <div class="flex flex-col items-center gap-4 mb-8">
-            <div id="status-msg" class="text-green-500 text-xs animate-pulse">STANDBY - ALIGN SENSORS</div>
-            <button id="scan-btn" class="pointer-events-auto w-20 h-20 rounded-full border-4 border-green-500 flex items-center justify-center bg-green-500/10 active:bg-green-500/40 transition-colors">
-                <div class="w-16 h-16 rounded-full border-2 border-green-500"></div>
-            </button>
-        </div>
+    <!-- Initialization Screen -->
+    <div id="start-screen">
+        <h1 class="hud-text text-3xl font-bold mb-2 tracking-widest text-center">AR COMBAT</h1>
+        <p class="hud-text text-sm mb-8">5-LEVEL PROTOCOL</p>
+        <button id="btn-init" class="px-8 py-4 bg-green-500/20 border-2 border-green-500 hud-text rounded hover:bg-green-500/40 transition">
+            INITIALIZE SENSORS<br><span class="text-xs opacity-70">(TAP TO START)</span>
+        </button>
     </div>
 
-    <video id="video-preview" autoplay playsinline muted></video>
-    <div id="scan-line" class="scan-line"></div>
-    <canvas id="hidden-canvas" style="display:none;"></canvas>
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        <div id="announcement" class="hud-text">LEVEL 1</div>
+
+        <!-- Top HUD -->
+        <div class="flex justify-between items-start p-6">
+            <div class="hud-text bg-black/50 p-2 hud-border rounded backdrop-blur-sm flex gap-4">
+                <div>
+                    <div class="text-[10px] opacity-70">LEVEL</div>
+                    <div id="level-display" class="text-xl font-bold">1/5</div>
+                </div>
+                <div>
+                    <div class="text-[10px] opacity-70 text-red-400">REMAINING</div>
+                    <div id="enemy-count" class="text-xl font-bold text-red-500">0</div>
+                </div>
+            </div>
+            <div class="hud-text bg-black/50 p-2 hud-border rounded text-right backdrop-blur-sm">
+                <div class="text-[10px] opacity-70">OPTICS</div>
+                <div id="zoom-level" class="text-xl font-bold">1X</div>
+            </div>
+        </div>
+
+        <!-- Crosshairs -->
+        <div id="crosshair-dot"></div>
+        <div id="scope-reticle"></div>
+
+        <!-- Controls -->
+        <div id="btn-scope" class="action-btn pointer-events-auto">SCOPE</div>
+        <div id="btn-fire" class="action-btn btn-red pointer-events-auto">FIRE</div>
+    </div>
 
     <script>
-        let scene, camera, renderer, points, grid;
-        let video = document.getElementById('video-preview');
-        let scanBtn = document.getElementById('scan-btn');
-        let statusMsg = document.getElementById('status-msg');
-        let scanLine = document.getElementById('scan-line');
-        let gyroDisplay = document.getElementById('gyro-data');
+        // --- Globals & Config ---
+        let scene, camera, renderer, cubeGroup, enemyGroup;
+        let sensorData = { alpha: 0, beta: 0, gamma: 0 };
+        let isZoomed = false;
+        let audioCtx;
         
-        const PLAYER_HEIGHT = 1.78; // 5'10" in meters
-        let currentRotation = { alpha: 0, beta: 0, gamma: 0 };
-        let pointsGroup = new THREE.Group();
+        // Environment Config (Expanded)
+        const PLAYER_HEIGHT = 1.78; 
+        const ROOM_WIDTH = 20.0; 
+        const ROOM_HEIGHT = 8.0; 
+        const ROOM_DEPTH = 20.0;
+        const DEFAULT_FOV = 75;
+        const ZOOM_FOV = 25;
 
+        // Dynamic Arrays
+        const lasers = [];
+        const particles = [];
+
+        // Level System Config
+        const levels = [
+            { id: 1, total: 5, concurrent: 2, speedMultiplier: 0.5 }, // Easy, slow
+            { id: 2, total: 10, concurrent: 4, speedMultiplier: 0.8 },
+            { id: 3, total: 15, concurrent: 6, speedMultiplier: 1.2 },
+            { id: 4, total: 20, concurrent: 8, speedMultiplier: 1.6 },
+            { id: 5, total: 30, concurrent: 12, speedMultiplier: 2.2 } // Hard, fast, many
+        ];
+        
+        let currentLevel = 0; // Index
+        let state = 'start'; // 'start', 'playing', 'transition', 'completed'
+        let spawnedThisLevel = 0;
+        let killedThisLevel = 0;
+        let lastSpawnTime = 0;
+
+        // --- Initialization ---
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000000);
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            // Position camera at 5'10" height
+            camera = new THREE.PerspectiveCamera(DEFAULT_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, PLAYER_HEIGHT, 0);
+            camera.rotation.order = 'YXZ';
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
 
-            // Create initial empty floor dots
-            const gridCount = 40;
-            const gridSpacing = 1;
-            const gridGeometry = new THREE.BufferGeometry();
-            const gridPositions = [];
-            for(let x = -gridCount; x <= gridCount; x++) {
-                for(let z = -gridCount; z <= gridCount; z++) {
-                    gridPositions.push(x * gridSpacing, 0, z * gridSpacing);
-                }
-            }
-            gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPositions, 3));
-            const gridMaterial = new THREE.PointsMaterial({ color: 0x004400, size: 0.05 });
-            grid = new THREE.Points(gridGeometry, gridMaterial);
-            scene.add(grid);
-            scene.add(pointsGroup);
+            createEnvironment();
+            enemyGroup = new THREE.Group();
+            scene.add(enemyGroup);
 
             window.addEventListener('resize', onWindowResize, false);
-            setupCamera();
-            setupGyro();
+            
+            document.getElementById('btn-init').addEventListener('click', startSystem);
+            
+            const btnFire = document.getElementById('btn-fire');
+            const btnScope = document.getElementById('btn-scope');
+            
+            btnFire.addEventListener('touchstart', (e) => { e.preventDefault(); shoot(); });
+            btnFire.addEventListener('mousedown', (e) => { e.preventDefault(); shoot(); });
+            
+            btnScope.addEventListener('touchstart', (e) => { e.preventDefault(); toggleScope(); });
+            btnScope.addEventListener('mousedown', (e) => { e.preventDefault(); toggleScope(); });
+
             animate();
         }
 
-        async function setupCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' }, 
-                    audio: false 
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                statusMsg.innerText = "CAMERA ACCESS DENIED";
-                console.error(err);
-            }
-        }
+        async function startSystem() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
 
-        function setupGyro() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                scanBtn.addEventListener('click', async () => {
-                    try {
-                        const permission = await DeviceOrientationEvent.requestPermission();
-                        if (permission === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation);
-                        }
-                    } catch (e) { console.error(e); }
-                }, { once: true });
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', handleGyro);
+                    }
+                } catch (e) { console.error(e); }
             } else {
-                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('deviceorientation', handleGyro);
+            }
+
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'block';
+            
+            startNextLevel();
+        }
+
+        // --- Level Management ---
+        function startNextLevel() {
+            if (currentLevel >= levels.length) {
+                showAnnouncement("ALL LEVELS CLEARED", true);
+                state = 'completed';
+                return;
+            }
+
+            state = 'transition';
+            spawnedThisLevel = 0;
+            killedThisLevel = 0;
+            
+            const config = levels[currentLevel];
+            document.getElementById('level-display').innerText = `${config.id}/5`;
+            updateHUD();
+
+            showAnnouncement(`LEVEL ${config.id}`, false);
+            
+            setTimeout(() => {
+                state = 'playing';
+            }, 2000);
+        }
+
+        function showAnnouncement(text, permanent) {
+            const el = document.getElementById('announcement');
+            el.innerText = text;
+            el.style.opacity = 1;
+            if (!permanent) {
+                setTimeout(() => { el.style.opacity = 0; }, 1500);
             }
         }
 
-        function handleOrientation(event) {
-            // Alpha: rotation around z-axis
-            // Beta: front back motion
-            // Gamma: left right motion
-            currentRotation.alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-            currentRotation.beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-            currentRotation.gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-
-            gyroDisplay.innerText = `GYRO: A:${Math.round(event.alpha)} B:${Math.round(event.beta)} G:${Math.round(event.gamma)}`;
+        function updateHUD() {
+            if(state === 'completed') return;
+            const config = levels[currentLevel];
+            const remaining = config.total - killedThisLevel;
+            document.getElementById('enemy-count').innerText = remaining;
         }
 
-        function captureEnvironment() {
-            statusMsg.innerText = "SCANNING ENVIRONMENT...";
-            scanLine.style.display = 'block';
+        function handleGyro(event) {
+            sensorData.alpha = event.alpha; 
+            sensorData.beta = event.beta;   
+            sensorData.gamma = event.gamma; 
+        }
+
+        function createEnvironment() {
+            cubeGroup = new THREE.Group();
             
-            const canvas = document.getElementById('hidden-canvas');
-            const ctx = canvas.getContext('2d');
-            const w = 80; // Lower res for performance
-            const h = 60;
-            canvas.width = w;
-            canvas.height = h;
-            
-            ctx.drawImage(video, 0, 0, w, h);
-            const imageData = ctx.getImageData(0, 0, w, h).data;
-            
-            // Clear previous points
-            while(pointsGroup.children.length > 0) pointsGroup.remove(pointsGroup.children[0]);
+            // Wireframe Room (20x20)
+            const boxGeom = new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH);
+            const edges = new THREE.EdgesGeometry(boxGeom);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x004400, transparent: true, opacity: 0.5 });
+            const wireframe = new THREE.LineSegments(edges, lineMat);
+            wireframe.position.y = ROOM_HEIGHT / 2; 
+            cubeGroup.add(wireframe);
 
-            const positions = [];
-            const colors = [];
+            // Dotted Walls
+            const dotMaterial = new THREE.PointsMaterial({ color: 0x118833, size: 0.05, transparent: true, opacity: 0.4 });
+            const dotPositions = [];
+            const density = 1; // 1 dot per meter for larger room
+            const halfW = ROOM_WIDTH / 2;
+            const halfD = ROOM_DEPTH / 2;
 
-            // Project pixels into 3D space based on camera direction
-            const vector = new THREE.Vector3();
-            camera.getWorldDirection(vector);
-
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const idx = (y * w + x) * 4;
-                    const r = imageData[idx];
-                    const g = imageData[idx + 1];
-                    const b = imageData[idx + 2];
-                    const brightness = (r + g + b) / 3;
-
-                    if (brightness > 40) { // Threshold to capture "objects"
-                        // Map pixels to a sphere/frustum in front of player
-                        const phi = (y / h - 0.5) * Math.PI * 0.5;
-                        const theta = (x / w - 0.5) * Math.PI * 0.5;
-                        const dist = 2 + (255 - brightness) / 50; // Brighter is closer
-
-                        const px = Math.sin(theta) * dist;
-                        const py = PLAYER_HEIGHT + Math.sin(-phi) * dist;
-                        const pz = -Math.cos(theta) * dist;
-
-                        positions.push(px, py, pz);
-                    }
+            for(let x = -halfW; x <= halfW; x += 1/density) {
+                for(let z = -halfD; z <= halfD; z += 1/density) {
+                    dotPositions.push(x, 0, z); // Floor
+                    dotPositions.push(x, ROOM_HEIGHT, z); // Ceiling
+                }
+            }
+            for(let y = 0; y <= ROOM_HEIGHT; y += 1/density) {
+                for(let x = -halfW; x <= halfW; x += 1/density) {
+                    dotPositions.push(x, y, -halfD);
+                    dotPositions.push(x, y, halfD);
+                }
+                for(let z = -halfD; z <= halfD; z += 1/density) {
+                    dotPositions.push(-halfW, y, z);
+                    dotPositions.push(halfW, y, z);
                 }
             }
 
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            const material = new THREE.PointsMaterial({ 
-                color: 0x22c55e, 
-                size: 0.03,
-                transparent: true,
-                opacity: 0.8
-            });
-            
-            const newPoints = new THREE.Points(geometry, material);
-            
-            // Align points group to current camera orientation so they stay "fixed" in space
-            pointsGroup.quaternion.copy(camera.quaternion);
-            pointsGroup.position.copy(camera.position);
-            pointsGroup.add(newPoints);
-
-            setTimeout(() => {
-                scanLine.style.display = 'none';
-                statusMsg.innerText = "SCAN COMPLETE - DATA STORED";
-            }, 1000);
+            const dotGeom = new THREE.BufferGeometry();
+            dotGeom.setAttribute('position', new THREE.Float32BufferAttribute(dotPositions, 3));
+            const points = new THREE.Points(dotGeom, dotMaterial);
+            cubeGroup.add(points);
+            scene.add(cubeGroup);
         }
 
-        scanBtn.addEventListener('click', captureEnvironment);
+        // --- Audio ---
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            if (type === 'laser') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
+                osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.15); 
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+            } else if (type === 'explosion') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            }
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+        }
 
+        // --- Mechanics ---
+        function shoot() {
+            if(state !== 'playing') return;
+            playSound('laser');
+
+            const geom = new THREE.CylinderGeometry(0.01, 0.01, 2, 8);
+            geom.rotateX(Math.PI / 2);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+            const laser = new THREE.Mesh(geom, mat);
+            
+            laser.position.copy(camera.position);
+            laser.quaternion.copy(camera.quaternion);
+            laser.translateY(-0.1);
+            laser.translateZ(-0.5);
+
+            scene.add(laser);
+            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            lasers.push({ mesh: laser, dir: direction, life: 60 });
+
+            // Raycast Detection
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); 
+            
+            const intersects = raycaster.intersectObjects(enemyGroup.children, true);
+            
+            if (intersects.length > 0) {
+                let hitObj = intersects[0].object;
+                while (hitObj.parent !== enemyGroup) {
+                    hitObj = hitObj.parent;
+                    if(!hitObj) break;
+                }
+                
+                if (hitObj && hitObj.userData.isEnemy && !hitObj.userData.dead) {
+                    hitObj.userData.dead = true; // Prevent double kill
+                    createExplosion(hitObj.position, hitObj.userData.type);
+                    enemyGroup.remove(hitObj);
+                    
+                    killedThisLevel++;
+                    updateHUD();
+
+                    if (killedThisLevel >= levels[currentLevel].total) {
+                        currentLevel++;
+                        startNextLevel();
+                    }
+                }
+            }
+        }
+
+        function toggleScope() {
+            isZoomed = !isZoomed;
+            camera.fov = isZoomed ? ZOOM_FOV : DEFAULT_FOV;
+            camera.updateProjectionMatrix();
+
+            document.getElementById('zoom-level').innerText = isZoomed ? '3X' : '1X';
+            document.getElementById('scope-reticle').style.display = isZoomed ? 'block' : 'none';
+            document.getElementById('crosshair-dot').style.display = isZoomed ? 'none' : 'block';
+        }
+
+        // --- Enemies ---
+        function spawnEnemy(speedMultiplier) {
+            const enemy = new THREE.Group();
+            enemy.userData.isEnemy = true;
+            
+            const type = Math.random() > 0.5 ? 'mosquito' : 'ufo';
+            enemy.userData.type = type;
+
+            if (type === 'mosquito') {
+                // Mosquito (Red/Yellow)
+                const bodyGeom = new THREE.OctahedronGeometry(0.15, 0); // Smaller
+                const bodyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const body = new THREE.Mesh(bodyGeom, bodyMat);
+                
+                const edges = new THREE.EdgesGeometry(bodyGeom);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+                const outline = new THREE.LineSegments(edges, edgeMat);
+                outline.scale.set(1.2, 1.2, 1.2);
+                
+                enemy.add(body); enemy.add(outline);
+                
+                // Erratic speed
+                enemy.userData.vx = (Math.random() - 0.5) * 0.08 * speedMultiplier;
+                enemy.userData.vy = (Math.random() - 0.5) * 0.08 * speedMultiplier;
+                enemy.userData.vz = (Math.random() - 0.5) * 0.08 * speedMultiplier;
+            } else {
+                // UFO (Green)
+                const bodyGeom = new THREE.SphereGeometry(0.2, 8, 8);
+                const bodyMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+                const body = new THREE.Mesh(bodyGeom, bodyMat);
+                body.scale.set(1.5, 0.4, 1.5); // Flattened
+                
+                const edges = new THREE.EdgesGeometry(bodyGeom);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0x88ff88, linewidth: 2 });
+                const outline = new THREE.LineSegments(edges, edgeMat);
+                outline.scale.set(1.6, 0.5, 1.6);
+
+                enemy.add(body); enemy.add(outline);
+
+                // Smooth hover speed
+                enemy.userData.vx = (Math.random() > 0.5 ? 1 : -1) * 0.03 * speedMultiplier;
+                enemy.userData.vy = 0; // Handled by sine wave
+                enemy.userData.vz = (Math.random() > 0.5 ? 1 : -1) * 0.03 * speedMultiplier;
+                enemy.userData.baseY = 0; // Assigned in position setting
+                enemy.userData.time = Math.random() * 100;
+            }
+
+            // Position: Random but forced to be FAR (Radius between 5m and 9m)
+            const radius = 5 + Math.random() * 4; 
+            const angle = Math.random() * Math.PI * 2;
+            const py = 1.0 + Math.random() * (ROOM_HEIGHT - 2.0);
+            
+            enemy.position.set(
+                Math.cos(angle) * radius,
+                py,
+                Math.sin(angle) * radius
+            );
+            
+            if(type === 'ufo') enemy.userData.baseY = py;
+
+            enemyGroup.add(enemy);
+        }
+
+        function createExplosion(pos, type) {
+            playSound('explosion');
+            const count = 15;
+            const geom = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+            
+            let mats;
+            if (type === 'mosquito') {
+                mats = [new THREE.MeshBasicMaterial({ color: 0xff0000 }), new THREE.MeshBasicMaterial({ color: 0xffff00 })];
+            } else {
+                mats = [new THREE.MeshBasicMaterial({ color: 0x00ff00 }), new THREE.MeshBasicMaterial({ color: 0xffffff })];
+            }
+
+            for(let i=0; i<count; i++) {
+                const mesh = new THREE.Mesh(geom, mats[i % 2]);
+                mesh.position.copy(pos);
+                scene.add(mesh);
+                particles.push({
+                    mesh: mesh,
+                    vx: (Math.random() - 0.5) * 0.3,
+                    vy: (Math.random() - 0.5) * 0.3,
+                    vz: (Math.random() - 0.5) * 0.3,
+                    life: 30
+                });
+            }
+        }
+
+        // --- Render Loop ---
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function animate() {
+        function animate(time) {
             requestAnimationFrame(animate);
 
-            // Apply Gyro to Camera
-            // Simple mapping - alpha is compass/yaw, beta is pitch
-            if (currentRotation) {
-                camera.rotation.set(
-                    currentRotation.beta + Math.PI/2, // Offset for holding phone upright
-                    -currentRotation.gamma,
-                    currentRotation.alpha,
-                    'YXZ'
-                );
+            // Gyro Update
+            if (sensorData) {
+                const alpha = sensorData.alpha ? THREE.MathUtils.degToRad(sensorData.alpha) : 0;
+                const beta = sensorData.beta ? THREE.MathUtils.degToRad(sensorData.beta) : 0;
+                const gamma = sensorData.gamma ? THREE.MathUtils.degToRad(sensorData.gamma) : 0;
+                camera.rotation.set(beta - Math.PI / 2, -gamma, -alpha, 'YXZ');
+            }
+
+            // Game Logic
+            if (state === 'playing') {
+                const config = levels[currentLevel];
+                
+                // Spawn Controller: Wait ~1.5s between spawns to avoid clustering
+                if (spawnedThisLevel < config.total && enemyGroup.children.length < config.concurrent) {
+                    if (time - lastSpawnTime > 1500) {
+                        spawnEnemy(config.speedMultiplier);
+                        spawnedThisLevel++;
+                        lastSpawnTime = time;
+                    }
+                }
+
+                // Update Enemies
+                const boundsW = ROOM_WIDTH / 2 - 0.5;
+                const boundsD = ROOM_DEPTH / 2 - 0.5;
+
+                enemyGroup.children.forEach(enemy => {
+                    enemy.position.x += enemy.userData.vx;
+                    enemy.position.z += enemy.userData.vz;
+                    
+                    if (enemy.userData.type === 'mosquito') {
+                        enemy.position.y += enemy.userData.vy;
+                        enemy.rotation.y += 0.05;
+                        enemy.rotation.z += 0.02;
+                        if(enemy.position.y > ROOM_HEIGHT - 0.5 || enemy.position.y < 0.5) enemy.userData.vy *= -1;
+                    } else {
+                        // UFO smooth hover
+                        enemy.userData.time += 0.05;
+                        enemy.position.y = enemy.userData.baseY + Math.sin(enemy.userData.time) * 0.5;
+                        enemy.rotation.y += 0.02;
+                    }
+
+                    // Bounce off walls
+                    if(Math.abs(enemy.position.x) > boundsW) enemy.userData.vx *= -1;
+                    if(Math.abs(enemy.position.z) > boundsD) enemy.userData.vz *= -1;
+                });
+            }
+
+            // Visual Updates (Lasers & Particles)
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const l = lasers[i];
+                l.mesh.position.addScaledVector(l.dir, 0.8); // Fast laser
+                l.life--;
+                if (l.life <= 0) { scene.remove(l.mesh); lasers.splice(i, 1); }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.mesh.position.x += p.vx;
+                p.mesh.position.y += p.vy;
+                p.mesh.position.z += p.vz;
+                p.mesh.scale.multiplyScalar(0.85); 
+                p.life--;
+                if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
             }
 
             renderer.render(scene, camera);
@@ -265,5 +529,6 @@
     </script>
 </body>
 </html>
+
 
 ```
