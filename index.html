@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Standing Viewport - Fixed Roll</title>
+    <title>AR Standing Viewport - Fixed Axes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -37,7 +37,7 @@
     <div id="ui">
         <div id="reticle"></div>
         <button id="start-btn" class="overlay-btn">Sync Neural Link</button>
-        <div id="hud">SYSTEM: STANDBY<br>AWAITING SENSOR INITIALIZATION</div>
+        <div id="hud">SYSTEM: STANDBY<br>AWAITING SENSOR CALIBRATION</div>
     </div>
 
     <script>
@@ -45,7 +45,7 @@
         let sensor = { alpha: 0, beta: 0, gamma: 0 };
         const eyeHeight = 1.65;
 
-        // Constants for coordinate mapping
+        // Base world rotation to align "Forward" with the phone held upright
         const q_world = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
         const q_sensor = new THREE.Quaternion();
 
@@ -71,15 +71,14 @@
             const size = 20;
             const height = 8;
 
-            // Tactical Grid with improved illumination
+            // Ground & Ceiling Grids
             const grid = new THREE.GridHelper(size, 20, 0x00ff00, 0x002200);
             scene.add(grid);
-            
             const ceil = grid.clone();
             ceil.position.y = height;
             scene.add(ceil);
 
-            // Illuminated Room Borders
+            // Room Wireframe
             const boxGeom = new THREE.BoxGeometry(size, height, size);
             const edges = new THREE.EdgesGeometry(boxGeom);
             const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
@@ -87,8 +86,8 @@
             room.position.y = height / 2;
             scene.add(room);
 
-            // Directional High-Luminance Pillars
-            const createPillar = (x, z, col, label) => {
+            // Compass Pillars
+            const createPillar = (x, z, col) => {
                 const pGeom = new THREE.CylinderGeometry(0.1, 0.1, height, 12);
                 const pMat = new THREE.MeshBasicMaterial({ color: col });
                 const p = new THREE.Mesh(pGeom, pMat);
@@ -126,31 +125,29 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // REFINED ORIENTATION LOGIC
-            // Convert to Radians
-            const alpha = THREE.MathUtils.degToRad(sensor.alpha); // Yaw
-            const beta = THREE.MathUtils.degToRad(sensor.beta);   // Pitch
-            const gamma = THREE.MathUtils.degToRad(sensor.gamma); // Roll
-
-            // The specific Euler order 'YXZ' ensures that:
-            // 1. Turning your body (Y/Alpha) happens first.
-            // 2. Tilting up/down (X/Beta) happens second.
-            // 3. Tilting the phone sideways (Z/Gamma) happens last and remains isolated.
+            // AXIS REMAPPING FOR PORTRAIT STANDING
+            // Based on user feedback:
+            // Gamma seems to be the Horizontal Panning (Yaw)
+            // Alpha seems to be the Side-to-Side Tilting (Roll)
+            // Beta remains Forward/Backward (Pitch)
             
-            // Note: We use -gamma to correct the inversion on the roll axis.
-            const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+            const roll  = THREE.MathUtils.degToRad(sensor.alpha); 
+            const pitch = THREE.MathUtils.degToRad(sensor.beta);  
+            const yaw   = THREE.MathUtils.degToRad(sensor.gamma); 
+
+            // Use 'YXZ' order to ensure turning the body is the primary transformation
+            const euler = new THREE.Euler(pitch, yaw, -roll, 'YXZ');
             q_sensor.setFromEuler(euler);
 
-            // Final Camera alignment
             camera.quaternion.copy(q_world);
             camera.quaternion.multiply(q_sensor);
 
-            // Update HUD Data
+            // HUD Diagnostics
             document.getElementById('hud').innerHTML = `
-                SENSORS: ACTIVE<br>
-                YAW: ${Math.round(sensor.alpha)}° (TURN BODY)<br>
-                PITCH: ${Math.round(sensor.beta)}° (TILT PHONE)<br>
-                ROLL: ${Math.round(sensor.gamma)}° (SIDE TILT)
+                SENSORS: CALIBRATED<br>
+                PAN (GAMMA): ${Math.round(sensor.gamma)}°<br>
+                TILT (BETA): ${Math.round(sensor.beta)}°<br>
+                ROLL (ALPHA): ${Math.round(sensor.alpha)}°
             `;
 
             renderer.render(scene, camera);
