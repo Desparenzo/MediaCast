@@ -4,74 +4,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Point Gyro Diagnostic</title>
+    <title>Pro Smartphone Gyro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: system-ui, -apple-system, sans-serif; }
-        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; }
+        body { margin: 0; overflow: hidden; background-color: #020617; font-family: system-ui, sans-serif; }
+        canvas { display: block; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .mono { font-family: ui-monospace, monospace; }
+        @keyframes pulse-blue {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+        }
+        .calibrate-ready { animation: pulse-blue 2s infinite; }
     </style>
 </head>
 <body class="text-white">
 
-    <div class="fixed top-0 left-0 w-full p-4 z-20">
-        <header class="flex justify-between items-center">
+    <!-- Header UI -->
+    <div class="fixed top-0 left-0 w-full p-6 z-20 pointer-events-none">
+        <div class="flex justify-between items-start pointer-events-auto">
             <div>
-                <h1 class="text-lg font-black tracking-tighter text-blue-400 uppercase leading-none">Diagnostic Logger</h1>
-                <p id="statusMsg" class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-1">Ready for Capture</p>
+                <h1 class="text-2xl font-black tracking-tighter text-blue-500 uppercase leading-none">V-Phone Gyro</h1>
+                <p id="status" class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-2">Engine Offline</p>
             </div>
-            <button id="permissionBtn" class="bg-blue-600 px-4 py-2 rounded-full text-xs font-bold shadow-lg">START SENSORS</button>
-        </header>
+            <div class="flex gap-3">
+                <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full text-xs font-bold transition-all shadow-lg">INITIALIZE SENSORS</button>
+                <button id="calibrateBtn" class="bg-white text-black px-6 py-2 rounded-full text-xs font-bold transition-all shadow-lg hidden">SET REFERENCE (ZERO)</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Diagnostic Step Overlay -->
-    <div id="diagBox" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 glass p-6 rounded-3xl z-30 text-center hidden">
-        <div id="stepCounter" class="text-blue-400 font-bold uppercase text-[10px] tracking-widest mb-2">Step 1 of 6</div>
-        <p id="instruction" class="text-base font-medium leading-tight mb-6">Lay phone flat on a table (Screen Facing Up).</p>
-        <button id="captureBtn" class="w-full bg-blue-600 py-3 rounded-xl text-sm font-bold uppercase shadow-xl mb-3">Capture Position Data</button>
-        <p id="rawPreview" class="text-[10px] text-slate-400 mono">A: 0 | B: 0 | G: 0</p>
-    </div>
+    <!-- 3D Container -->
+    <div id="canvas-container" class="fixed inset-0"></div>
 
-    <!-- Result Display -->
-    <div id="resultBox" class="fixed inset-4 glass p-6 rounded-3xl z-40 hidden flex flex-col">
-        <h2 class="text-xl font-bold text-blue-400 mb-2">Diagnostic Data Ready</h2>
-        <p class="text-xs text-slate-400 mb-4">Copy the text below and paste it in our chat:</p>
-        <textarea id="resultText" class="flex-1 bg-black/50 p-4 rounded-xl font-mono text-[10px] text-emerald-400 border border-white/10 resize-none mb-4" readonly></textarea>
-        <button id="copyBtn" class="bg-white text-black py-3 rounded-xl font-bold uppercase">Copy to Clipboard</button>
+    <!-- HUD -->
+    <div class="fixed bottom-0 left-0 w-full p-6 z-10 pointer-events-none">
+        <div class="max-w-4xl mx-auto flex flex-col gap-4">
+            <div id="calibrationPrompt" class="glass p-4 rounded-2xl text-center border border-blue-500/30 hidden">
+                <p class="text-blue-400 font-bold text-xs uppercase tracking-widest mb-1">Calibration Required</p>
+                <p class="text-slate-300 text-sm">Hold phone at your preferred "Natural Upright" position and tap the button.</p>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-3 pointer-events-auto">
+                <div class="glass p-4 rounded-2xl border-b-2 border-blue-500">
+                    <div class="text-[10px] font-black text-blue-500 uppercase mb-1">Pitch</div>
+                    <div id="pitchVal" class="text-2xl font-black mono text-white">0.0°</div>
+                </div>
+                <div class="glass p-4 rounded-2xl border-b-2 border-emerald-500">
+                    <div class="text-[10px] font-black text-emerald-500 uppercase mb-1">Roll</div>
+                    <div id="rollVal" class="text-2xl font-black mono text-white">0.0°</div>
+                </div>
+                <div class="glass p-4 rounded-2xl border-b-2 border-amber-500">
+                    <div class="text-[10px] font-black text-amber-500 uppercase mb-1">Yaw</div>
+                    <div id="yawVal" class="text-2xl font-black mono text-white">0.0°</div>
+                </div>
+            </div>
+        </div>
     </div>
-
-    <div id="canvas-container" class="fixed inset-0 opacity-50"></div>
 
     <script>
-        let scene, camera, renderer, phoneGroup;
-        let sensorActive = false;
-        let currentRaw = { a: 0, b: 0, g: 0 };
-        let capturedData = [];
-        
-        const steps = [
-            "1. Phone FLAT on table (Screen UP).",
-            "2. Phone STANDING upright (Portrait mode).",
-            "3. Phone UPSIDE DOWN (Standing on its top edge).",
-            "4. Phone on LEFT SIDE (Landscape, volume buttons down).",
-            "5. Phone on RIGHT SIDE (Landscape, power button down).",
-            "6. Phone SCREEN DOWN (Flat on table face down)."
-        ];
-        let currentStepIdx = 0;
+        let scene, camera, renderer, phoneModel, compassRing;
+        let currentQuaternion = new THREE.Quaternion();
+        let calibrationQuaternion = new THREE.Quaternion();
+        let isSensorActive = false;
 
-        function createSimplePhone() {
+        function createPhoneModel() {
             const group = new THREE.Group();
+
+            // Chassis
             const body = new THREE.Mesh(
-                new THREE.BoxGeometry(2.4, 4.8, 0.3),
-                new THREE.MeshPhongMaterial({ color: 0x334155 })
+                new THREE.BoxGeometry(2.4, 4.8, 0.22),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.8 })
             );
             group.add(body);
+
+            // Screen
             const screen = new THREE.Mesh(
-                new THREE.PlaneGeometry(2.2, 4.6),
-                new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+                new THREE.PlaneGeometry(2.25, 4.65),
+                new THREE.MeshStandardMaterial({ 
+                    color: 0x000000, 
+                    emissive: 0x1e3a8a, 
+                    emissiveIntensity: 0.5,
+                    roughness: 0
+                })
             );
-            screen.position.z = 0.16;
+            screen.position.z = 0.12;
             group.add(screen);
+
+            // "TOP" Indicator on screen
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "rgba(0,0,0,0)"; ctx.fillRect(0,0,256,512);
+            ctx.fillStyle = "#3b82f6"; ctx.font = "bold 24px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText("V-PHONE", 128, 256);
+            ctx.font = "bold 16px sans-serif"; ctx.fillText("▲ TOP ▲", 128, 40);
+            const tex = new THREE.CanvasTexture(canvas);
+            const overlay = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.25, 4.65),
+                new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+            );
+            overlay.position.z = 0.121;
+            group.add(overlay);
+
+            // Camera Lenses (Back)
+            const lensGeom = new THREE.CircleGeometry(0.15, 32);
+            const lensMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0, metalness: 1 });
+            const lens1 = new THREE.Mesh(lensGeom, lensMat);
+            lens1.position.set(-0.6, 1.8, -0.12);
+            lens1.rotation.y = Math.PI;
+            group.add(lens1);
+
+            return group;
+        }
+
+        function createCompass() {
+            const group = new THREE.Group();
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(5, 0.05, 16, 100),
+                new THREE.MeshBasicMaterial({ color: 0x1e3a8a, transparent: true, opacity: 0.3 })
+            );
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+
+            for (let i = 0; i < 360; i += 30) {
+                const mark = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.1, 0.02, 0.4),
+                    new THREE.MeshBasicMaterial({ color: i === 0 ? 0xff0000 : 0x3b82f6 })
+                );
+                const r = i * (Math.PI / 180);
+                mark.position.set(Math.sin(r) * 5, 0, -Math.cos(r) * 5);
+                mark.rotation.y = -r;
+                group.add(mark);
+            }
             return group;
         }
 
@@ -79,83 +145,95 @@
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            phoneGroup = createSimplePhone();
-            scene.add(phoneGroup);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-            camera.position.set(0, 0, 10);
-            
-            function animate() {
-                requestAnimationFrame(animate);
-                if (!sensorActive) phoneGroup.rotation.y += 0.01;
-                renderer.render(scene, camera);
-            }
+            phoneModel = createPhoneModel();
+            scene.add(phoneModel);
+
+            compassRing = createCompass();
+            scene.add(compassRing);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+            const pLight = new THREE.PointLight(0x60a5fa, 1);
+            pLight.position.set(5, 10, 5);
+            scene.add(pLight);
+
+            camera.position.set(0, 5, 12);
+            camera.lookAt(0, 0, 0);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
             animate();
         }
 
-        async function start() {
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!isSensorActive) {
+                phoneModel.rotation.y += 0.01;
+                phoneModel.rotation.x = Math.sin(Date.now() * 0.001) * 0.1;
+            } else {
+                // Apply calibration-relative rotation
+                const relativeQuat = calibrationQuaternion.clone().invert().multiply(currentQuaternion);
+                phoneModel.quaternion.copy(relativeQuat);
+                
+                // Keep compass aligned with world yaw
+                compassRing.quaternion.copy(relativeQuat);
+                compassRing.rotation.x = Math.PI / 2; // Flat on floor
+                compassRing.rotation.z = 0;
+            }
+            renderer.render(scene, camera);
+        }
+
+        function updateOrientation(e) {
+            isSensorActive = true;
+            
+            // Standard DeviceOrientation to Euler mapping
+            const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0; // Z
+            const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;   // X'
+            const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0; // Y''
+
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'ZXY');
+            currentQuaternion.setFromEuler(euler);
+
+            // UI Feedback
+            document.getElementById('pitchVal').innerText = (e.beta || 0).toFixed(1) + '°';
+            document.getElementById('rollVal').innerText = (e.gamma || 0).toFixed(1) + '°';
+            document.getElementById('yawVal').innerText = (e.alpha || 0).toFixed(1) + '°';
+        }
+
+        function calibrate() {
+            calibrationQuaternion.copy(currentQuaternion);
+            const btn = document.getElementById('calibrateBtn');
+            btn.innerText = "CALIBRATED!";
+            btn.classList.remove('calibrate-ready');
+            document.getElementById('calibrationPrompt').classList.add('hidden');
+            setTimeout(() => { btn.innerText = "SET REFERENCE (ZERO)"; }, 2000);
+        }
+
+        async function initSensors() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const res = await DeviceOrientationEvent.requestPermission();
                 if (res !== 'granted') return;
             }
             
-            window.addEventListener('deviceorientation', (e) => {
-                sensorActive = true;
-                currentRaw = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0 };
-                document.getElementById('rawPreview').innerText = 
-                    `A: ${currentRaw.a.toFixed(1)} | B: ${currentRaw.b.toFixed(1)} | G: ${currentRaw.g.toFixed(1)}`;
-                
-                // Visual feedback (uncalibrated)
-                const rad = Math.PI / 180;
-                phoneGroup.rotation.set(currentRaw.b * rad, currentRaw.a * rad, currentRaw.g * rad, 'YXZ');
-            });
-
+            window.addEventListener('deviceorientation', updateOrientation);
             document.getElementById('permissionBtn').classList.add('hidden');
-            document.getElementById('diagBox').classList.remove('hidden');
-        }
-
-        function captureCurrentStep() {
-            capturedData.push({
-                step: steps[currentStepIdx],
-                data: { ...currentRaw }
-            });
-
-            currentStepIdx++;
-            if (currentStepIdx < steps.length) {
-                document.getElementById('stepCounter').innerText = `Step ${currentStepIdx + 1} of 6`;
-                document.getElementById('instruction').innerText = steps[currentStepIdx];
-            } else {
-                showResults();
-            }
-        }
-
-        function showResults() {
-            document.getElementById('diagBox').classList.add('hidden');
-            document.getElementById('resultBox').classList.remove('hidden');
-            
-            const resultStr = capturedData.map(d => 
-                `${d.step}\nRAW: Alpha=${d.data.a.toFixed(2)}, Beta=${d.data.b.toFixed(2)}, Gamma=${d.data.g.toFixed(2)}`
-            ).join('\n\n');
-            
-            document.getElementById('resultText').value = resultStr;
+            document.getElementById('calibrateBtn').classList.remove('hidden');
+            document.getElementById('calibrateBtn').classList.add('calibrate-ready');
+            document.getElementById('calibrationPrompt').classList.remove('hidden');
+            document.getElementById('status').innerText = "Sensors Streaming";
         }
 
         window.onload = () => {
             init3D();
-            document.getElementById('permissionBtn').onclick = start;
-            document.getElementById('captureBtn').onclick = captureCurrentStep;
-            document.getElementById('copyBtn').onclick = () => {
-                const text = document.getElementById('resultText').value;
-                const textArea = document.createElement("textarea");
-                textArea.value = text;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                document.getElementById('copyBtn').innerText = "COPIED!";
-            };
+            document.getElementById('permissionBtn').onclick = initSensors;
+            document.getElementById('calibrateBtn').onclick = calibrate;
         };
     </script>
 </body>
