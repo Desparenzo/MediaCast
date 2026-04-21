@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Standing Viewport - Fixed Axes</title>
+    <title>AR Standing Viewport - Fixed Calibrated</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -45,8 +45,9 @@
         let sensor = { alpha: 0, beta: 0, gamma: 0 };
         const eyeHeight = 1.65;
 
-        // Base world rotation to align "Forward" with the phone held upright
-        const q_world = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
+        // Correct world alignment for upright phone:
+        // By default, Three.js cameras look down -Z.
+        const q_world = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
         const q_sensor = new THREE.Quaternion();
 
         function init() {
@@ -78,15 +79,15 @@
             ceil.position.y = height;
             scene.add(ceil);
 
-            // Room Wireframe
+            // Room Wireframe with Illuminated Edges
             const boxGeom = new THREE.BoxGeometry(size, height, size);
             const edges = new THREE.EdgesGeometry(boxGeom);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 });
             const room = new THREE.LineSegments(edges, lineMat);
             room.position.y = height / 2;
             scene.add(room);
 
-            // Compass Pillars
+            // Orientation Pillars (Visible markers for calibration)
             const createPillar = (x, z, col) => {
                 const pGeom = new THREE.CylinderGeometry(0.1, 0.1, height, 12);
                 const pMat = new THREE.MeshBasicMaterial({ color: col });
@@ -95,7 +96,7 @@
                 scene.add(p);
             };
 
-            createPillar(0, -9.8, 0xff0000); // NORTH (Red)
+            createPillar(0, -9.8, 0xff0000); // NORTH (Red) - Looking straight ahead
             createPillar(9.8, 0, 0x00ff00);  // EAST (Green)
             createPillar(-9.8, 0, 0x0000ff); // WEST (Blue)
             createPillar(0, 9.8, 0xffffff);  // SOUTH (White)
@@ -108,9 +109,9 @@
             }
             
             window.addEventListener('deviceorientation', (e) => {
-                sensor.alpha = e.alpha || 0;
-                sensor.beta = e.beta || 0;
-                sensor.gamma = e.gamma || 0;
+                sensor.alpha = e.alpha || 0; // Yaw (Panning)
+                sensor.beta = e.beta || 0;   // Pitch (Look Up/Down)
+                sensor.gamma = e.gamma || 0; // Roll (Horizon Tilt)
             }, true);
 
             document.getElementById('start-btn').style.display = 'none';
@@ -125,29 +126,30 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // AXIS REMAPPING FOR PORTRAIT STANDING
-            // Based on user feedback:
-            // Gamma seems to be the Horizontal Panning (Yaw)
-            // Alpha seems to be the Side-to-Side Tilting (Roll)
-            // Beta remains Forward/Backward (Pitch)
+            // MAPPING AS REQUESTED:
+            // Yaw (Panning): Alpha
+            // Pitch (Up/Down): Beta (90 is default level)
+            // Roll (Tilt): Gamma (0 is default level)
             
-            const roll  = THREE.MathUtils.degToRad(sensor.alpha); 
-            const pitch = THREE.MathUtils.degToRad(sensor.beta);  
-            const yaw   = THREE.MathUtils.degToRad(sensor.gamma); 
+            const yaw   = THREE.MathUtils.degToRad(sensor.alpha); 
+            const pitch = THREE.MathUtils.degToRad(sensor.beta - 90); // Offset by 90 so standing = 0
+            const roll  = THREE.MathUtils.degToRad(sensor.gamma); 
 
-            // Use 'YXZ' order to ensure turning the body is the primary transformation
-            const euler = new THREE.Euler(pitch, yaw, -roll, 'YXZ');
+            // 'YXZ' order: Rotate around Y (Yaw) first, then X (Pitch), then Z (Roll)
+            // This is the standard "Head" rotation logic.
+            const euler = new THREE.Euler(pitch, -yaw, -roll, 'YXZ');
             q_sensor.setFromEuler(euler);
 
+            // Apply world offset and then sensor rotation
             camera.quaternion.copy(q_world);
             camera.quaternion.multiply(q_sensor);
 
             // HUD Diagnostics
             document.getElementById('hud').innerHTML = `
-                SENSORS: CALIBRATED<br>
-                PAN (GAMMA): ${Math.round(sensor.gamma)}°<br>
-                TILT (BETA): ${Math.round(sensor.beta)}°<br>
-                ROLL (ALPHA): ${Math.round(sensor.alpha)}°
+                SENSORS: STABILIZED<br>
+                PAN (ALPHA): ${Math.round(sensor.alpha)}°<br>
+                LOOK (BETA): ${Math.round(sensor.beta)}° (90 is Neutral)<br>
+                ROLL (GAMMA): ${Math.round(sensor.gamma)}° (0 is Neutral)
             `;
 
             renderer.render(scene, camera);
