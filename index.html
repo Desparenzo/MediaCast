@@ -199,11 +199,9 @@
 
             const rad = Math.PI / 180;
             
-            // Standard Euler Mapping for Device Orientation
-            // Beta = X rotation
-            // Alpha = Y rotation (World Z)
-            // Gamma = Z rotation
-            phoneGroup.rotation.set(cB * rad, cA * rad, -cG * rad, 'YXZ');
+            // SWAPPED FIX: We flip the sign of the Roll (Gamma) calculation
+            // to correct for the inverted behavior observed in steps 4 & 5.
+            phoneGroup.rotation.set(cB * rad, cA * rad, cG * rad, 'YXZ');
 
             document.getElementById('pitchVal').innerText = cB.toFixed(1) + '°';
             document.getElementById('rollVal').innerText = cG.toFixed(1) + '°';
