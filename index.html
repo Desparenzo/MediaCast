@@ -4,41 +4,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Foundation Viewport</title>
+    <title>AR Precision Compass-Gyro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: monospace; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: monospace; touch-action: none; }
         canvas { display: block; }
         #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10;
         }
         .hud-ui {
-            position: absolute;
-            bottom: 20px;
-            color: #00ff00;
-            text-align: center;
-            font-size: 12px;
-            background: rgba(0, 40, 0, 0.5);
-            padding: 10px;
-            border: 1px solid #00ff00;
-            pointer-events: auto;
+            position: absolute; bottom: 40px; color: #00ff00; text-align: center;
+            font-size: 14px; background: rgba(0, 40, 0, 0.7); padding: 15px 30px;
+            border: 2px solid #00ff00; pointer-events: auto; text-transform: uppercase;
+            letter-spacing: 2px; font-weight: bold;
         }
         #crosshair {
-            width: 10px;
-            height: 10px;
-            border: 1px solid #00ff00;
-            border-radius: 50%;
+            width: 20px; height: 20px; border: 1px solid rgba(0, 255, 0, 0.5);
+            position: relative;
+        }
+        #crosshair::before { content: ''; position: absolute; top: 50%; left: -5px; width: 30px; height: 1px; background: #0f0; }
+        #crosshair::after { content: ''; position: absolute; left: 50%; top: -5px; width: 1px; height: 30px; background: #0f0; }
+        
+        #debug {
+            position: absolute; top: 20px; left: 20px; color: #0f0; 
+            font-size: 10px; line-height: 1.4; background: rgba(0,0,0,0.5); padding: 5px;
         }
     </style>
 </head>
@@ -47,92 +39,132 @@
     <div id="overlay">
         <div id="crosshair"></div>
         <div id="init-btn" class="hud-ui cursor-pointer">
-            CALIBRATE SENSORS & START
+            Initialize Compass & Gyro
         </div>
-        <div id="debug" style="position: absolute; top: 10px; left: 10px; color: #00ff00; font-size: 10px;">
-            SENSORS: STANDBY
+        <div id="debug">
+            SYSTEM: OFFLINE<br>
+            HEADING: 0.00<br>
+            ATTITUDE: 0.00
         </div>
     </div>
 
     <script>
-        let scene, camera, renderer;
-        let sensorAlpha = 0, sensorBeta = 0, sensorGamma = 0;
-        const playerHeight = 1.6; // Eyes at 1.6 meters
+        let scene, camera, renderer, room;
+        const playerHeight = 1.6;
 
+        // Using Euler and Quaternion for stable rotation
+        const currentOrientation = new THREE.Quaternion();
+        const screenTransform = new THREE.Quaternion();
+        const worldTransform = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90 deg around X
+        
         function init() {
-            // 1. Scene Setup
             scene = new THREE.Scene();
-
-            // 2. Camera Setup
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            // Position camera in the center of the room at eye level
             camera.position.set(0, playerHeight, 0);
-            // Important: Set rotation order to YXZ for natural head movement
-            camera.rotation.order = 'YXZ';
 
-            // 3. Renderer Setup
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            createRoom();
-
+            createScene();
             window.addEventListener('resize', onWindowResize);
-            document.getElementById('init-btn').addEventListener('click', startSensors);
-
+            document.getElementById('init-btn').addEventListener('click', startTracking);
+            
             animate();
         }
 
-        function createRoom() {
+        function createScene() {
+            // 10x10x4 Room
             const size = 10;
             const height = 4;
-
-            // Create a simple wireframe box for the room
-            const geometry = new THREE.BoxGeometry(size, height, size);
-            const edges = new THREE.EdgesGeometry(geometry);
-            const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
-            const room = new THREE.LineSegments(edges, material);
             
-            // Move room so floor is at y=0
+            // Floor Grid
+            const grid = new THREE.GridHelper(size, 20, 0x00ff00, 0x002200);
+            scene.add(grid);
+
+            // Ceiling Grid
+            const ceilingGrid = new THREE.GridHelper(size, 20, 0x00ff00, 0x002200);
+            ceilingGrid.position.y = height;
+            scene.add(ceilingGrid);
+
+            // Walls (using wireframe box)
+            const geom = new THREE.BoxGeometry(size, height, size);
+            const edges = new THREE.EdgesGeometry(geom);
+            const mat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+            room = new THREE.LineSegments(edges, mat);
             room.position.y = height / 2;
             scene.add(room);
 
-            // Add a floor grid
-            const gridHelper = new THREE.GridHelper(size, 10, 0x00ff00, 0x004400);
-            scene.add(gridHelper);
-
-            // Add a reference object in front of the user (at -Z)
-            const boxGeom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-            const boxMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
-            const refBox = new THREE.Mesh(boxGeom, boxMat);
-            refBox.position.set(0, playerHeight, -4); // 4 meters in front
-            scene.add(refBox);
+            // Orientation Markers (N, S, E, W)
+            addMarker(0, playerHeight, -4.5, 0xff0000); // NORTH (Front)
+            addMarker(4.5, playerHeight, 0, 0x00ff00);  // EAST
+            addMarker(-4.5, playerHeight, 0, 0x0000ff); // WEST
+            addMarker(0, playerHeight, 4.5, 0xffffff);  // SOUTH
         }
 
-        async function startSensors() {
+        function addMarker(x, y, z, color) {
+            const mGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const mMat = new THREE.MeshBasicMaterial({ color: color });
+            const mesh = new THREE.Mesh(mGeom, mMat);
+            mesh.position.set(x, y, z);
+            scene.add(mesh);
+        }
+
+        async function startTracking() {
+            const debugEl = document.getElementById('debug');
+            
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', updateOrientation);
-                    }
-                } catch (e) {
-                    console.error(e);
+                const permission = await DeviceOrientationEvent.requestPermission();
+                if (permission === 'granted') {
+                    window.addEventListener('deviceorientation', onDeviceOrientation, true);
+                    debugEl.innerHTML = "SYSTEM: ONLINE (iOS)";
                 }
             } else {
-                window.addEventListener('deviceorientation', updateOrientation);
+                window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true) || 
+                window.addEventListener('deviceorientation', onDeviceOrientation, true);
+                debugEl.innerHTML = "SYSTEM: ONLINE (ANDROID)";
             }
             document.getElementById('init-btn').style.display = 'none';
         }
 
-        function updateOrientation(event) {
-            sensorAlpha = event.alpha || 0; // Yaw
-            sensorBeta = event.beta || 0;   // Pitch
-            sensorGamma = event.gamma || 0; // Roll
+        function onDeviceOrientation(event) {
+            // Compass heading logic
+            let alpha = event.alpha; // Z-axis rotation
+            if (event.webkitCompassHeading) {
+                alpha = 360 - event.webkitCompassHeading; // iOS Compass
+            }
             
-            document.getElementById('debug').innerText = 
-                `YAW: ${Math.round(sensorAlpha)} | PITCH: ${Math.round(sensorBeta)} | ROLL: ${Math.round(sensorGamma)}`;
+            const beta = event.beta;   // X-axis rotation (-180 to 180)
+            const gamma = event.gamma; // Y-axis rotation (-90 to 90)
+            const screen = window.orientation || 0;
+
+            // Debug readout
+            document.getElementById('debug').innerHTML = `
+                SYSTEM: ACTIVE<br>
+                YAW: ${alpha.toFixed(2)}<br>
+                PITCH: ${beta.toFixed(2)}<br>
+                ROLL: ${gamma.toFixed(2)}
+            `;
+
+            // Convert degrees to radians
+            const ra = THREE.MathUtils.degToRad(alpha);
+            const rb = THREE.MathUtils.degToRad(beta);
+            const rg = THREE.MathUtils.degToRad(gamma);
+            const rs = THREE.MathUtils.degToRad(screen);
+
+            // THE FIX: Matrix transformation for mobile viewport
+            // 1. Set orientation from sensors
+            const euler = new THREE.Euler(rb, ra, -rg, 'YXZ'); 
+            currentOrientation.setFromEuler(euler);
+            
+            // 2. Adjust for screen rotation (Landscape vs Portrait)
+            screenTransform.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -rs);
+            
+            // 3. Apply everything to camera
+            camera.quaternion.copy(worldTransform); // Start at base
+            camera.quaternion.multiply(currentOrientation); // Add gyro
+            camera.quaternion.multiply(screenTransform); // Add screen offset
         }
 
         function onWindowResize() {
@@ -143,17 +175,6 @@
 
         function animate() {
             requestAnimationFrame(animate);
-
-            // CALIBRATION LOGIC
-            // When holding the phone upright (portrait):
-            // Beta (X-axis) is 90 when vertical. We subtract 90 to look level at 0.
-            const pitch = THREE.MathUtils.degToRad(sensorBeta - 90); 
-            const yaw = THREE.MathUtils.degToRad(-sensorAlpha);
-            const roll = THREE.MathUtils.degToRad(-sensorGamma);
-
-            // Apply rotation in YXZ order (Yaw -> Pitch -> Roll)
-            camera.rotation.set(pitch, yaw, roll);
-
             renderer.render(scene, camera);
         }
 
