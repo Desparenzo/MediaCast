@@ -4,49 +4,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Standing Viewport</title>
+    <title>AR Standing Viewport - Fixed Roll</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; touch-action: none; }
         canvas { display: block; }
         #ui {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; display: flex; flex-direction: column; align-items: center;
         }
         .overlay-btn {
-            pointer-events: auto; margin-top: 40vh; padding: 20px 40px;
+            pointer-events: auto; margin-top: 45vh; padding: 15px 35px;
             background: rgba(0, 255, 0, 0.1); border: 2px solid #0f0;
             color: #0f0; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(0,255,0,0.2);
         }
         #hud {
-            position: absolute; bottom: 20px; left: 20px; color: #0f0; font-size: 10px;
-            background: rgba(0,20,0,0.8); padding: 10px; border: 1px solid #050;
+            position: absolute; bottom: 20px; left: 20px; color: #0f0; font-size: 11px;
+            background: rgba(0,20,0,0.85); padding: 12px; border: 1px solid #0f0;
+            border-radius: 4px; line-height: 1.5;
         }
         #reticle {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 40px; height: 40px; border: 1px solid rgba(0, 255, 0, 0.3); border-radius: 50%;
+            width: 50px; height: 50px; border: 1px solid rgba(0, 255, 0, 0.2); border-radius: 50%;
         }
-        #reticle::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: #0f0; border-radius: 50%; transform: translate(-50%, -50%); }
+        #reticle::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #0f0; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 8px #0f0; }
     </style>
 </head>
 <body>
 
     <div id="ui">
         <div id="reticle"></div>
-        <button id="start-btn" class="overlay-btn">Calibrate Upright View</button>
-        <div id="hud">READY FOR SYNC</div>
+        <button id="start-btn" class="overlay-btn">Sync Neural Link</button>
+        <div id="hud">SYSTEM: STANDBY<br>AWAITING SENSOR INITIALIZATION</div>
     </div>
 
     <script>
         let scene, camera, renderer;
-        let sensor = { alpha: 0, beta: 0, gamma: 0, heading: 0 };
+        let sensor = { alpha: 0, beta: 0, gamma: 0 };
         const eyeHeight = 1.65;
 
-        // Mathematical constants for the standing orientation fix
-        const q_world = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // Rotate world to match upright phone
+        // Constants for coordinate mapping
+        const q_world = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
         const q_sensor = new THREE.Quaternion();
-        const q_final = new THREE.Quaternion();
 
         function init() {
             scene = new THREE.Scene();
@@ -55,10 +56,10 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
 
-            buildTacticalRoom();
+            buildEnvironment();
             
             document.getElementById('start-btn').addEventListener('click', start);
             window.addEventListener('resize', onResize);
@@ -66,45 +67,43 @@
             animate();
         }
 
-        function buildTacticalRoom() {
-            // High-visibility illuminated room
-            const size = 16;
-            const height = 6;
+        function buildEnvironment() {
+            const size = 20;
+            const height = 8;
 
-            // Floor & Ceiling
-            const grid = new THREE.GridHelper(size, 16, 0x00ff00, 0x003300);
+            // Tactical Grid with improved illumination
+            const grid = new THREE.GridHelper(size, 20, 0x00ff00, 0x002200);
             scene.add(grid);
+            
             const ceil = grid.clone();
             ceil.position.y = height;
             scene.add(ceil);
 
-            // Wall Edges
+            // Illuminated Room Borders
             const boxGeom = new THREE.BoxGeometry(size, height, size);
             const edges = new THREE.EdgesGeometry(boxGeom);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.6 });
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
             const room = new THREE.LineSegments(edges, lineMat);
             room.position.y = height / 2;
             scene.add(room);
 
-            // Directional Pillars
-            const pillarGeom = new THREE.CylinderGeometry(0.1, 0.1, height, 8);
-            const pillarMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            
-            const createPillar = (x, z, col) => {
-                const p = new THREE.Mesh(pillarGeom, pillarMat.clone());
-                p.material.color.setHex(col);
+            // Directional High-Luminance Pillars
+            const createPillar = (x, z, col, label) => {
+                const pGeom = new THREE.CylinderGeometry(0.1, 0.1, height, 12);
+                const pMat = new THREE.MeshBasicMaterial({ color: col });
+                const p = new THREE.Mesh(pGeom, pMat);
                 p.position.set(x, height/2, z);
                 scene.add(p);
             };
 
-            createPillar(0, -7.5, 0xff0000); // NORTH - RED
-            createPillar(7.5, 0, 0x00ff00);  // EAST - GREEN
-            createPillar(-7.5, 0, 0x0000ff); // WEST - BLUE
-            createPillar(0, 7.5, 0xffffff);  // SOUTH - WHITE
+            createPillar(0, -9.8, 0xff0000); // NORTH (Red)
+            createPillar(9.8, 0, 0x00ff00);  // EAST (Green)
+            createPillar(-9.8, 0, 0x0000ff); // WEST (Blue)
+            createPillar(0, 9.8, 0xffffff);  // SOUTH (White)
         }
 
         async function start() {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const response = await DeviceOrientationEvent.requestPermission();
                 if (response !== 'granted') return;
             }
@@ -113,21 +112,9 @@
                 sensor.alpha = e.alpha || 0;
                 sensor.beta = e.beta || 0;
                 sensor.gamma = e.gamma || 0;
-                sensor.heading = e.webkitCompassHeading || e.alpha || 0;
-                
-                updateHUD();
             }, true);
 
             document.getElementById('start-btn').style.display = 'none';
-        }
-
-        function updateHUD() {
-            document.getElementById('hud').innerHTML = `
-                YAW: ${Math.round(sensor.alpha)}° | 
-                PITCH: ${Math.round(sensor.beta)}° | 
-                ROLL: ${Math.round(sensor.gamma)}°<br>
-                ORIENTATION: PORTRAIT_FIXED
-            `;
         }
 
         function onResize() {
@@ -139,25 +126,32 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // STANDING UPRIGHT FIX:
-            // We convert degrees to radians and use a specific Euler order 'YXZ'
-            // To fix the "standing" inversion:
-            // 1. Beta (Pitch) is typically 90 when standing.
-            // 2. We use the absolute rotation of the device.
-            
-            const a = THREE.MathUtils.degToRad(sensor.alpha);
-            const b = THREE.MathUtils.degToRad(sensor.beta);
-            const g = THREE.MathUtils.degToRad(sensor.gamma);
+            // REFINED ORIENTATION LOGIC
+            // Convert to Radians
+            const alpha = THREE.MathUtils.degToRad(sensor.alpha); // Yaw
+            const beta = THREE.MathUtils.degToRad(sensor.beta);   // Pitch
+            const gamma = THREE.MathUtils.degToRad(sensor.gamma); // Roll
 
-            // Create quaternion from sensor data
-            // We map: X=beta, Y=alpha, Z=-gamma
-            const euler = new THREE.Euler(b, a, -g, 'YXZ');
+            // The specific Euler order 'YXZ' ensures that:
+            // 1. Turning your body (Y/Alpha) happens first.
+            // 2. Tilting up/down (X/Beta) happens second.
+            // 3. Tilting the phone sideways (Z/Gamma) happens last and remains isolated.
+            
+            // Note: We use -gamma to correct the inversion on the roll axis.
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
             q_sensor.setFromEuler(euler);
 
-            // Apply world-to-device coordinate transform
-            // This aligns the "forward" vector to your eye level while standing
+            // Final Camera alignment
             camera.quaternion.copy(q_world);
             camera.quaternion.multiply(q_sensor);
+
+            // Update HUD Data
+            document.getElementById('hud').innerHTML = `
+                SENSORS: ACTIVE<br>
+                YAW: ${Math.round(sensor.alpha)}° (TURN BODY)<br>
+                PITCH: ${Math.round(sensor.beta)}° (TILT PHONE)<br>
+                ROLL: ${Math.round(sensor.gamma)}° (SIDE TILT)
+            `;
 
             renderer.render(scene, camera);
         }
