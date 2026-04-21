@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Raw Sensor Monitor</title>
+    <title>Gyro Sensor Capture</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { 
@@ -20,79 +20,131 @@
         .data-card {
             border: 1px solid #0f0;
             background: rgba(0, 20, 0, 0.5);
-            padding: 20px;
-            margin: 10px;
+            padding: 15px;
+            margin: 8px;
             border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        .data-card.frozen {
+            border-color: #f00;
+            background: rgba(40, 0, 0, 0.5);
         }
         .val {
-            font-size: 3rem;
+            font-size: 2.8rem;
             font-weight: bold;
             color: #fff;
-            text-shadow: 0 0 10px #0f0;
+        }
+        .frozen .val {
+            color: #f88;
         }
         .label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #0f0;
             opacity: 0.7;
             text-transform: uppercase;
             letter-spacing: 2px;
         }
+        .frozen .label {
+            color: #f00;
+        }
     </style>
 </head>
 <body>
 
-    <div class="flex-1 flex flex-col justify-center p-4">
-        <div class="data-card">
-            <div class="label">Alpha (Z-Axis / Compass)</div>
+    <div class="flex-1 flex flex-col justify-center p-2">
+        <div id="card-alpha" class="data-card">
+            <div class="label">Alpha (Yaw / Body Turn)</div>
             <div id="alpha" class="val">0.00</div>
         </div>
 
-        <div class="data-card">
-            <div class="label">Beta (X-Axis / Pitch)</div>
+        <div id="card-beta" class="data-card">
+            <div class="label">Beta (Pitch / Front-Back)</div>
             <div id="beta" class="val">0.00</div>
         </div>
 
-        <div class="data-card">
-            <div class="label">Gamma (Y-Axis / Roll)</div>
+        <div id="card-gamma" class="data-card">
+            <div class="label">Gamma (Roll / Steering)</div>
             <div id="gamma" class="val">0.00</div>
         </div>
     </div>
 
-    <div class="p-6 text-center">
-        <button id="start" class="bg-green-900 border-2 border-green-400 text-green-400 px-8 py-4 rounded-full font-bold uppercase tracking-widest active:bg-green-400 active:text-black">
-            Initialize Sensors
+    <div class="p-6 flex flex-col gap-4 items-center">
+        <button id="freeze-btn" class="hidden w-full max-w-xs bg-red-900 border-2 border-red-500 text-red-500 px-8 py-4 rounded-xl font-bold uppercase tracking-widest active:scale-95 transition-transform">
+            Freeze Data
         </button>
+        
+        <button id="start" class="w-full max-w-xs bg-green-900 border-2 border-green-400 text-green-400 px-8 py-4 rounded-xl font-bold uppercase tracking-widest active:scale-95 transition-transform">
+            Start Sensors
+        </button>
+        
+        <p id="status-msg" class="text-[10px] text-green-700 uppercase">Awaiting initialization...</p>
     </div>
 
     <script>
         const alphaEl = document.getElementById('alpha');
         const betaEl = document.getElementById('beta');
         const gammaEl = document.getElementById('gamma');
+        
         const startBtn = document.getElementById('start');
+        const freezeBtn = document.getElementById('freeze-btn');
+        const statusMsg = document.getElementById('status-msg');
+        
+        const cards = [
+            document.getElementById('card-alpha'),
+            document.getElementById('card-beta'),
+            document.getElementById('card-gamma')
+        ];
+
+        let isFrozen = false;
 
         async function start() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
                     if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', update);
-                        startBtn.style.display = 'none';
+                        initSensors();
                     }
                 } catch (err) {
-                    console.error(err);
+                    statusMsg.innerText = "Error: " + err.message;
                 }
             } else {
-                window.addEventListener('deviceorientation', update);
-                startBtn.style.display = 'none';
+                initSensors();
             }
         }
 
+        function initSensors() {
+            window.addEventListener('deviceorientation', update);
+            startBtn.classList.add('hidden');
+            freezeBtn.classList.remove('hidden');
+            statusMsg.innerText = "System Live - Press Freeze to capture";
+        }
+
         function update(e) {
-            // Using toFixed(2) for high precision data gathering
+            if (isFrozen) return;
+            
             alphaEl.innerText = (e.alpha || 0).toFixed(2);
             betaEl.innerText = (e.beta || 0).toFixed(2);
             gammaEl.innerText = (e.gamma || 0).toFixed(2);
         }
+
+        freezeBtn.addEventListener('click', () => {
+            isFrozen = !isFrozen;
+            if (isFrozen) {
+                freezeBtn.innerText = "Unfreeze / Live";
+                freezeBtn.classList.replace('bg-red-900', 'bg-blue-900');
+                freezeBtn.classList.replace('border-red-500', 'border-blue-500');
+                freezeBtn.classList.replace('text-red-500', 'text-blue-500');
+                cards.forEach(c => c.classList.add('frozen'));
+                statusMsg.innerText = "DATA CAPTURED";
+            } else {
+                freezeBtn.innerText = "Freeze Data";
+                freezeBtn.classList.replace('bg-blue-900', 'bg-red-900');
+                freezeBtn.classList.replace('border-blue-500', 'border-red-500');
+                freezeBtn.classList.replace('text-blue-500', 'text-red-500');
+                cards.forEach(c => c.classList.remove('frozen'));
+                statusMsg.innerText = "System Live";
+            }
+        });
 
         startBtn.addEventListener('click', start);
     </script>
