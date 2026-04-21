@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gyro Sensor Tester</title>
+    <title>Gyro Cube Tester</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -18,107 +18,147 @@
             display: block;
         }
         .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; }
+        
+        /* Ensure the UI doesn't interfere with the 3D interaction */
+        .no-pointer { pointer-events: none; }
+        .yes-pointer { pointer-events: auto; }
     </style>
 </head>
 <body class="text-white">
 
-    <!-- UI Overlay -->
-    <div class="fixed inset-0 pointer-events-none flex flex-col p-6 z-10">
-        <header class="flex justify-between items-start w-full pointer-events-auto">
+    <!-- Top Branding -->
+    <div class="fixed top-0 left-0 w-full p-6 no-pointer z-10">
+        <header class="flex justify-between items-center yes-pointer">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight">Gyroscope Tester</h1>
-                <p class="text-slate-400 text-sm">Real-time IMU Data</p>
+                <h1 class="text-xl font-black tracking-tighter text-blue-400 uppercase">Cube Gyro Labs</h1>
+                <p class="text-slate-500 text-[10px] font-bold tracking-widest uppercase">Visual Calibration v2.0</p>
             </div>
-            <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-lg pointer-events-auto hidden">
-                Enable Sensors
+            <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-full text-xs font-bold transition-all shadow-xl hidden">
+                START SENSORS
             </button>
         </header>
+    </div>
 
-        <div class="mt-auto grid grid-cols-1 md:grid-cols-3 gap-4 pointer-events-auto">
-            <!-- Pitch -->
-            <div class="glass p-4 rounded-2xl">
-                <div class="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">Pitch (X)</div>
-                <div class="flex items-baseline gap-2">
-                    <span id="pitchVal" class="text-3xl font-mono">0.0°</span>
-                </div>
-                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
-                    <div id="pitchBar" class="bg-blue-500 h-full transition-all duration-75" style="width: 50%"></div>
+    <!-- Main 3D Stage -->
+    <div id="canvas-container" class="fixed inset-0"></div>
+
+    <!-- Data Dashboard at Bottom -->
+    <div class="fixed bottom-0 left-0 w-full p-4 md:p-6 no-pointer z-10">
+        <div class="max-w-5xl mx-auto grid grid-cols-3 gap-2 md:gap-4 yes-pointer">
+            
+            <!-- Pitch Panel -->
+            <div class="glass p-3 md:p-4 rounded-xl border-b-2 border-blue-500">
+                <div class="text-[10px] font-black text-blue-400 uppercase tracking-tighter mb-1">Pitch (β)</div>
+                <div class="flex items-center justify-between">
+                    <span id="pitchVal" class="text-xl md:text-3xl font-black mono text-white">0.0°</span>
+                    <span class="hidden md:block text-[10px] text-slate-500 mono">X-AXIS</span>
                 </div>
             </div>
 
-            <!-- Roll -->
-            <div class="glass p-4 rounded-2xl">
-                <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">Roll (Z)</div>
-                <div class="flex items-baseline gap-2">
-                    <span id="rollVal" class="text-3xl font-mono">0.0°</span>
-                </div>
-                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
-                    <div id="rollBar" class="bg-emerald-500 h-full transition-all duration-75" style="width: 50%"></div>
+            <!-- Roll Panel -->
+            <div class="glass p-3 md:p-4 rounded-xl border-b-2 border-emerald-500">
+                <div class="text-[10px] font-black text-emerald-400 uppercase tracking-tighter mb-1">Roll (γ)</div>
+                <div class="flex items-center justify-between">
+                    <span id="rollVal" class="text-xl md:text-3xl font-black mono text-white">0.0°</span>
+                    <span class="hidden md:block text-[10px] text-slate-500 mono">Y-AXIS</span>
                 </div>
             </div>
 
-            <!-- Yaw -->
-            <div class="glass p-4 rounded-2xl">
-                <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">Yaw / Alpha (Y)</div>
-                <div class="flex items-baseline gap-2">
-                    <span id="yawVal" class="text-3xl font-mono">0.0°</span>
-                </div>
-                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
-                    <div id="yawBar" class="bg-amber-500 h-full transition-all duration-75" style="width: 50%"></div>
+            <!-- Yaw Panel -->
+            <div class="glass p-3 md:p-4 rounded-xl border-b-2 border-amber-500">
+                <div class="text-[10px] font-black text-amber-400 uppercase tracking-tighter mb-1">Yaw (α)</div>
+                <div class="flex items-center justify-between">
+                    <span id="yawVal" class="text-xl md:text-3xl font-black mono text-white">0.0°</span>
+                    <span class="hidden md:block text-[10px] text-slate-500 mono">Z-AXIS</span>
                 </div>
             </div>
+
         </div>
     </div>
 
-    <div id="canvas-container" class="fixed inset-0"></div>
-
     <script>
-        let scene, camera, renderer, phone;
+        let scene, camera, renderer, cube, axesHelper;
         let sensorActive = false;
+
+        function createFaceTexture(number, color, label) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 512, 512);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 20;
+            ctx.strokeRect(10, 10, 492, 492);
+
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 350px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(number, 256, 256);
+
+            ctx.font = 'bold 40px sans-serif';
+            ctx.fillText(label, 256, 460);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return new THREE.MeshPhongMaterial({ 
+                map: texture, 
+                shininess: 60,
+                specular: 0x444444
+            });
+        }
 
         function init3D() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Background gradient simulation
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.05);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
             
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            // Create Smartphone Shape
-            const geometry = new THREE.BoxGeometry(2.2, 4.5, 0.2);
+            const geometry = new THREE.BoxGeometry(3.2, 3.2, 3.2);
             
-            // Multi-material for screen and back
             const materials = [
-                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // sides
-                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // sides
-                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // top
-                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // bottom
-                new THREE.MeshPhongMaterial({ color: 0x3b82f6 }), // screen (front)
-                new THREE.MeshPhongMaterial({ color: 0x334155 })  // back
+                createFaceTexture('1', '#3b82f6', 'RIGHT (+X)'), 
+                createFaceTexture('2', '#ef4444', 'LEFT (-X)'),
+                createFaceTexture('3', '#10b981', 'TOP (+Y)'),
+                createFaceTexture('4', '#f59e0b', 'BOTTOM (-Y)'),
+                createFaceTexture('5', '#8b5cf6', 'FRONT (+Z)'),
+                createFaceTexture('6', '#ec4899', 'BACK (-Z)')
             ];
 
-            phone = new THREE.Mesh(geometry, materials);
-            scene.add(phone);
+            cube = new THREE.Mesh(geometry, materials);
+            scene.add(cube);
 
-            // Add detail: "Screen" glow/border
+            // Subtle glow edges
             const edges = new THREE.EdgesGeometry(geometry);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x60a5fa }));
-            phone.add(line);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+            cube.add(line);
 
-            // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            axesHelper = new THREE.AxesHelper(5);
+            scene.add(axesHelper);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 10, 7.5);
-            scene.add(directionalLight);
+            const spotLight = new THREE.SpotLight(0xffffff, 0.8);
+            spotLight.position.set(10, 20, 10);
+            scene.add(spotLight);
 
-            camera.position.z = 7;
+            // Centered camera position for better mobile viewing
+            camera.position.set(6, 4, 10);
+            camera.lookAt(0, 0, 0);
 
             window.addEventListener('resize', onWindowResize, false);
             animate();
@@ -133,36 +173,30 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // If no sensor, slow auto-rotate to show it's working
             if (!sensorActive) {
-                phone.rotation.y += 0.01;
-                phone.rotation.x = -0.5;
+                // Auto-drift when no sensor
+                cube.rotation.y += 0.004;
+                cube.rotation.x += 0.002;
             }
             
             renderer.render(scene, camera);
         }
 
-        function updateData(alpha, beta, gamma) {
+        function updateOrientation(alpha, beta, gamma) {
             sensorActive = true;
+            const degToRad = Math.PI / 180;
             
-            // Convert to Radians for Three.js
-            // alpha = yaw (0-360), beta = pitch (-180, 180), gamma = roll (-90, 90)
-            const pitchRad = THREE.MathUtils.degToRad(beta);
-            const rollRad = THREE.MathUtils.degToRad(gamma);
-            const yawRad = THREE.MathUtils.degToRad(alpha);
+            // Standard DeviceOrientation Euler Order
+            cube.rotation.set(
+                beta * degToRad,
+                alpha * degToRad,
+                -gamma * degToRad,
+                'ZXY'
+            );
 
-            // Set rotation
-            phone.rotation.set(pitchRad, yawRad, rollRad);
-
-            // Update UI
             document.getElementById('pitchVal').innerText = beta.toFixed(1) + '°';
             document.getElementById('rollVal').innerText = gamma.toFixed(1) + '°';
             document.getElementById('yawVal').innerText = alpha.toFixed(1) + '°';
-
-            // Bars calculation (normalized to 100%)
-            document.getElementById('pitchBar').style.width = ((beta + 90) / 180 * 100) + '%';
-            document.getElementById('rollBar').style.width = ((gamma + 90) / 180 * 100) + '%';
-            document.getElementById('yawBar').style.width = (alpha / 360 * 100) + '%';
         }
 
         async function requestPermission() {
@@ -170,36 +204,32 @@
                 try {
                     const response = await DeviceOrientationEvent.requestPermission();
                     if (response === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
-                        document.getElementById('permissionBtn').classList.add('hidden');
+                        startListening();
                     }
                 } catch (e) {
                     console.error(e);
                 }
             } else {
-                // Non-iOS or older browsers
-                window.addEventListener('deviceorientation', handleOrientation);
-                document.getElementById('permissionBtn').classList.add('hidden');
+                startListening();
             }
         }
 
-        function handleOrientation(event) {
-            const alpha = event.alpha || 0; // z-axis (yaw)
-            const beta = event.beta || 0;   // x-axis (pitch)
-            const gamma = event.gamma || 0; // y-axis (roll)
-            updateData(alpha, beta, gamma);
+        function startListening() {
+            window.addEventListener('deviceorientation', (e) => {
+                if (e.alpha !== null) {
+                    updateOrientation(e.alpha, e.beta, e.gamma);
+                }
+            });
+            document.getElementById('permissionBtn').classList.add('hidden');
         }
 
         window.onload = () => {
             init3D();
-            
-            // Check if we need to show permission button
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 document.getElementById('permissionBtn').classList.remove('hidden');
                 document.getElementById('permissionBtn').addEventListener('click', requestPermission);
             } else {
-                // Try to start automatically for standard browsers
-                window.addEventListener('deviceorientation', handleOrientation);
+                startListening();
             }
         };
     </script>
