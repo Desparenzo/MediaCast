@@ -4,190 +4,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>6-Side Truth Logger</title>
+    <title>Final Calibrated V-Phone</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #020617; font-family: system-ui, sans-serif; color: white; }
-        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        body { margin: 0; overflow: hidden; background-color: #020617; font-family: system-ui, sans-serif; }
+        canvas { display: block; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
         .mono { font-family: ui-monospace, monospace; }
-        .target-glow { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); border: 1px solid #3b82f6; }
     </style>
 </head>
-<body>
+<body class="text-white">
 
-    <!-- Header -->
-    <div class="fixed top-0 left-0 w-full p-4 z-20 pointer-events-none">
-        <div class="flex justify-between items-center pointer-events-auto">
-            <h1 class="text-xl font-black text-blue-500 uppercase tracking-tighter italic">Mapping-V3</h1>
-            <button id="startBtn" class="bg-blue-600 px-6 py-2 rounded-full text-xs font-bold shadow-lg">START SENSORS</button>
+    <div class="fixed top-0 left-0 w-full p-6 z-20 pointer-events-none">
+        <div class="flex justify-between items-start pointer-events-auto">
+            <div>
+                <h1 class="text-2xl font-black tracking-tighter text-blue-500 uppercase leading-none italic">V-Phone Final</h1>
+                <p id="status" class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-2">Driver: 6-Point Validated</p>
+            </div>
+            <button id="startBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full text-xs font-bold transition-all shadow-lg shadow-blue-900/40">START SENSORS</button>
         </div>
     </div>
 
-    <!-- Instructions Overlay -->
-    <div id="diagBox" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 glass p-6 rounded-3xl z-30 text-center hidden">
-        <div id="stepCounter" class="text-blue-400 font-bold uppercase text-[10px] tracking-widest mb-1">Step 1 of 6</div>
-        <h2 id="targetSide" class="text-xl font-black mb-4 uppercase tracking-tight">FRONT FACE UP</h2>
-        <p id="instruction" class="text-sm text-slate-400 leading-tight mb-6 italic">Lay phone flat on table with screen facing the ceiling.</p>
-        
-        <button id="captureBtn" class="w-full bg-blue-600 py-4 rounded-2xl font-bold uppercase shadow-xl mb-4 target-glow">Capture Position</button>
-        
-        <div class="grid grid-cols-3 gap-1 text-[9px] mono text-slate-500 border-t border-white/5 pt-4">
-            <div>A: <span id="valA">0</span></div>
-            <div>B: <span id="valB">0</span></div>
-            <div>G: <span id="valG">0</span></div>
+    <div id="canvas-container" class="fixed inset-0"></div>
+
+    <div class="fixed bottom-0 left-0 w-full p-6 z-20 pointer-events-none">
+        <div class="max-w-4xl mx-auto flex flex-col gap-4">
+            <div class="grid grid-cols-3 gap-4 pointer-events-auto">
+                <div class="glass p-4 rounded-2xl border-b-2 border-blue-500/50">
+                    <div class="text-[9px] font-black text-blue-400 uppercase mb-1 tracking-widest">Pitch</div>
+                    <div id="ui-pitch" class="text-xl font-bold mono">0.0°</div>
+                </div>
+                <div class="glass p-4 rounded-2xl border-b-2 border-emerald-500/50">
+                    <div class="text-[9px] font-black text-emerald-400 uppercase mb-1 tracking-widest">Roll</div>
+                    <div id="ui-roll" class="text-xl font-bold mono">0.0°</div>
+                </div>
+                <div class="glass p-4 rounded-2xl border-b-2 border-amber-500/50">
+                    <div class="text-[9px] font-black text-amber-400 uppercase mb-1 tracking-widest">Yaw</div>
+                    <div id="ui-yaw" class="text-xl font-bold mono">0.0°</div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <!-- Final Result Modal -->
-    <div id="resultModal" class="fixed inset-0 z-50 glass flex items-center justify-center p-6 hidden">
-        <div class="bg-slate-900 w-full max-w-lg rounded-3xl p-6 border border-blue-500/30 shadow-2xl">
-            <h2 class="text-xl font-bold text-blue-400 mb-2">Full Mapping Data</h2>
-            <p class="text-xs text-slate-500 mb-4 tracking-wide">Copy this and paste it back to me:</p>
-            <textarea id="output" class="w-full h-64 bg-black/50 p-4 rounded-xl font-mono text-[10px] text-emerald-400 border border-white/10 mb-4" readonly></textarea>
-            <button id="copyBtn" class="w-full bg-white text-black py-4 rounded-2xl font-bold uppercase">Copy for Developer</button>
-        </div>
-    </div>
-
-    <div id="canvas-container" class="fixed inset-0 z-10"></div>
 
     <script>
         let scene, camera, renderer, phoneGroup;
-        let sensorData = { a: 0, b: 0, g: 0 };
-        let logs = [];
+        let isSensorActive = false;
         
-        const steps = [
-            { side: "FRONT UP", desc: "Lay phone FLAT on table (Screen facing Ceiling)", color: 0x3b82f6 },
-            { side: "BACK UP", desc: "Lay phone FLAT on table (Camera facing Ceiling)", color: 0xef4444 },
-            { side: "TOP UP", desc: "Hold phone UPSIDE DOWN (Charging port facing Ceiling)", color: 0x10b981 },
-            { side: "BOTTOM UP", desc: "Hold phone UPRIGHT (Standard vertical mode)", color: 0xf59e0b },
-            { side: "LEFT UP", desc: "Landscape mode: Volume buttons facing Ceiling", color: 0x8b5cf6 },
-            { side: "RIGHT UP", desc: "Landscape mode: Power button facing Ceiling", color: 0xec4899 }
-        ];
-        let currentStepIdx = 0;
+        // This is the "World" correction. Standard browser math wants the phone flat.
+        // We add a 90-degree offset so that "Upright" (Step 4 in your data) looks correct.
+        const sensorToWorldOffset = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
 
-        function createLabeledPhone() {
+        function createPhone() {
             const group = new THREE.Group();
             
-            // Basic chassis
-            const chassis = new THREE.Mesh(
-                new THREE.BoxGeometry(2.4, 4.8, 0.3),
-                new THREE.MeshStandardMaterial({ color: 0x1e293b })
+            // Body
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(2.4, 4.8, 0.25),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.2 })
             );
-            group.add(chassis);
+            group.add(body);
 
-            const addLabel = (text, pos, rot, bgColor) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 256; canvas.height = 256;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = bgColor; ctx.fillRect(0,0,256,256);
-                ctx.fillStyle = 'white'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center';
-                ctx.fillText(text, 128, 145);
-                
-                const tex = new THREE.CanvasTexture(canvas);
-                const plane = new THREE.Mesh(
-                    new THREE.PlaneGeometry(text === 'FRONT' || text === 'BACK' ? 2.3 : 0.25, text === 'FRONT' || text === 'BACK' ? 4.7 : 4.7),
-                    new THREE.MeshBasicMaterial({ map: tex })
-                );
-                // Adjust geometry size for side labels
-                if (text === 'TOP' || text === 'BOTTOM') plane.geometry = new THREE.PlaneGeometry(2.3, 0.25);
-                if (text === 'LEFT' || text === 'RIGHT') plane.geometry = new THREE.PlaneGeometry(0.25, 4.7);
+            // Screen
+            const screen = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.28, 4.68),
+                new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x3b82f6, emissiveIntensity: 0.2 })
+            );
+            screen.position.z = 0.13;
+            group.add(screen);
 
-                plane.position.set(pos.x, pos.y, pos.z);
-                plane.rotation.set(rot.x, rot.y, rot.z);
-                group.add(plane);
-            };
+            // Labels
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "#3b82f6"; ctx.font = "bold 60px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText("V-PHONE", 256, 512);
+            ctx.font = "bold 40px sans-serif"; ctx.fillText("▲ TOP ▲", 256, 100);
+            ctx.fillText("▼ BOTTOM ▼", 256, 950);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const overlay = new THREE.Mesh(new THREE.PlaneGeometry(2.28, 4.68), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+            overlay.position.z = 0.131;
+            group.add(overlay);
 
-            // 6 Faces
-            addLabel('FRONT', {x:0, y:0, z:0.16}, {x:0, y:0, z:0}, '#1e40af'); // Screen
-            addLabel('BACK', {x:0, y:0, z:-0.16}, {x:0, y:Math.PI, z:0}, '#991b1b'); // Back
-            addLabel('TOP', {x:0, y:2.41, z:0}, {x:-Math.PI/2, y:0, z:0}, '#065f46'); // Top edge
-            addLabel('BOTTOM', {x:0, y:-2.41, z:0}, {x:Math.PI/2, y:0, z:0}, '#92400e'); // Bottom edge
-            addLabel('LEFT', {x:-1.21, y:0, z:0}, {x:0, y:-Math.PI/2, z:0}, '#5b21b6'); // Left edge
-            addLabel('RIGHT', {x:1.21, y:0, z:0}, {x:0, y:Math.PI/2, z:0}, '#9d174d'); // Right edge
+            // Back camera to identify the back
+            const cam = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
+            cam.position.set(-0.6, 1.8, -0.13);
+            group.add(cam);
 
             return group;
         }
 
         function init3D() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            phoneGroup = createLabeledPhone();
+            phoneGroup = createPhone();
             scene.add(phoneGroup);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-            camera.position.set(0, 0, 10);
 
-            function animate() {
-                requestAnimationFrame(animate);
-                if (currentStepIdx < steps.length) {
-                    // Slowly rotate the target side towards the camera for preview
-                    const target = steps[currentStepIdx].side;
-                    if (target === "FRONT UP") phoneGroup.rotation.set(-Math.PI/4, 0, 0);
-                    if (target === "BACK UP") phoneGroup.rotation.set(Math.PI - 0.5, 0, 0);
-                    if (target === "TOP UP") phoneGroup.rotation.set(-Math.PI/2, 0, 0);
-                    if (target === "BOTTOM UP") phoneGroup.rotation.set(Math.PI/2, 0, 0);
-                    if (target === "LEFT UP") phoneGroup.rotation.set(0, Math.PI/2, -Math.PI/2);
-                    if (target === "RIGHT UP") phoneGroup.rotation.set(0, -Math.PI/2, Math.PI/2);
-                }
-                renderer.render(scene, camera);
-            }
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const light = new THREE.DirectionalLight(0xffffff, 0.8);
+            light.position.set(5, 10, 7);
+            scene.add(light);
+
+            camera.position.set(0, 0, 10);
             animate();
         }
 
-        async function startSensors() {
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!isSensorActive) {
+                phoneGroup.rotation.y += 0.01;
+            }
+            renderer.render(scene, camera);
+        }
+
+        function handleOrientation(e) {
+            isSensorActive = true;
+            
+            // Convert to Radians
+            const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
+            const beta = THREE.MathUtils.degToRad(e.beta || 0);
+            const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
+
+            // Based on your 6-point test:
+            // Beta is Pitch (X), Gamma is Roll (Y), Alpha is Yaw (Z)
+            // Use 'ZXY' order which is the standard for mobile orientation data
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'ZXY');
+            
+            // Create quaternion from the device data
+            const deviceQuat = new THREE.Quaternion().setFromEuler(euler);
+            
+            // Combine with the offset to make Portrait = Upright
+            phoneGroup.quaternion.copy(sensorToWorldOffset).multiply(deviceQuat);
+
+            // Update UI
+            document.getElementById('ui-pitch').innerText = (e.beta || 0).toFixed(1) + '°';
+            document.getElementById('ui-roll').innerText = (e.gamma || 0).toFixed(1) + '°';
+            document.getElementById('ui-yaw').innerText = (e.alpha || 0).toFixed(1) + '°';
+        }
+
+        async function start() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const res = await DeviceOrientationEvent.requestPermission();
                 if (res !== 'granted') return;
             }
-            window.addEventListener('deviceorientation', (e) => {
-                sensorData = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0 };
-                document.getElementById('valA').innerText = sensorData.a.toFixed(1);
-                document.getElementById('valB').innerText = sensorData.b.toFixed(1);
-                document.getElementById('valG').innerText = sensorData.g.toFixed(1);
-            });
+            window.addEventListener('deviceorientation', handleOrientation);
             document.getElementById('startBtn').classList.add('hidden');
-            document.getElementById('diagBox').classList.remove('hidden');
         }
 
-        function captureStep() {
-            logs.push({
-                intendedSideUp: steps[currentStepIdx].side,
-                alpha: sensorData.a,
-                beta: sensorData.b,
-                gamma: sensorData.g
-            });
+        window.onload = init3D;
+        document.getElementById('startBtn').onclick = start;
 
-            currentStepIdx++;
-            if (currentStepIdx < steps.length) {
-                document.getElementById('stepCounter').innerText = `Step ${currentStepIdx + 1} of 6`;
-                document.getElementById('targetSide').innerText = steps[currentStepIdx].side;
-                document.getElementById('instruction').innerText = steps[currentStepIdx].desc;
-            } else {
-                finish();
-            }
-        }
-
-        function finish() {
-            document.getElementById('diagBox').classList.add('hidden');
-            document.getElementById('resultModal').classList.remove('hidden');
-            document.getElementById('output').value = JSON.stringify(logs, null, 2);
-        }
-
-        window.onload = () => {
-            init3D();
-            document.getElementById('startBtn').onclick = startSensors;
-            document.getElementById('captureBtn').onclick = captureStep;
-            document.getElementById('copyBtn').onclick = () => {
-                const out = document.getElementById('output');
-                out.select();
-                document.execCommand('copy');
-                document.getElementById('copyBtn').innerText = "COPIED!";
-            };
-        };
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
