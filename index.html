@@ -4,21 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Tactical Shooter - 5 Levels</title>
+    <title>AR Tactical Shooter - Fixed Axis</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; touch-action: none; }
         canvas { display: block; }
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
-        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,20,0,0.9); pointer-events: auto; }
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,10,0,1); pointer-events: auto; }
         
         .pointer-events-auto { pointer-events: auto; }
-        .hud-border { border: 1px solid rgba(34, 197, 94, 0.4); }
-        .hud-text { color: #22c55e; text-shadow: 0 0 5px #22c55e; }
-        .hud-text-red { color: #ef4444; text-shadow: 0 0 5px #ef4444; }
+        .hud-border { border: 1px solid rgba(34, 197, 94, 0.6); }
+        .hud-text { color: #22c55e; text-shadow: 0 0 8px #22c55e; }
         
-        /* Crosshairs */
         #crosshair-dot {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 4px; height: 4px; background-color: #22c55e; border-radius: 50%;
@@ -26,323 +24,240 @@
         }
         #scope-reticle {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 60vw; height: 60vw; max-width: 400px; max-height: 400px;
-            border: 2px solid #22c55e; border-radius: 50%; box-shadow: 0 0 20px rgba(34,197,94,0.5);
-            display: none;
+            width: 65vw; height: 65vw; max-width: 450px; max-height: 450px;
+            border: 2px solid #22c55e; border-radius: 50%; box-shadow: 0 0 30px rgba(34,197,94,0.4);
+            display: none; background: radial-gradient(circle, transparent 40%, rgba(0,40,0,0.2) 100%);
         }
-        #scope-reticle::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #22c55e; transform: translateY(-50%); }
-        #scope-reticle::after { content: ''; position: absolute; top: 0; left: 50%; width: 2px; height: 100%; background: #22c55e; transform: translateX(-50%); }
+        #scope-reticle::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(34,197,94,0.8); }
+        #scope-reticle::after { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(34,197,94,0.8); }
 
-        /* Controls */
         .action-btn {
-            width: 80px; height: 80px; border-radius: 50%;
+            width: 85px; height: 85px; border-radius: 50%;
             background: rgba(34, 197, 94, 0.1); border: 3px solid rgba(34, 197, 94, 0.6);
             display: flex; align-items: center; justify-content: center;
             color: #22c55e; font-weight: bold; font-size: 14px; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
             transition: all 0.1s;
         }
-        .action-btn:active { background: rgba(34, 197, 94, 0.4); transform: scale(0.95); }
-        .btn-red { border-color: rgba(239, 68, 68, 0.8); color: #ef4444; background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
-        .btn-red:active { background: rgba(239, 68, 68, 0.4); }
+        .action-btn:active { background: rgba(34, 197, 94, 0.5); transform: scale(0.9); }
+        .btn-red { border-color: #ef4444; color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 
-        #btn-scope { position: absolute; bottom: 40px; left: 40px; }
-        #btn-fire { position: absolute; bottom: 40px; right: 40px; }
+        #btn-scope { position: absolute; bottom: 50px; left: 30px; }
+        #btn-fire { position: absolute; bottom: 50px; right: 30px; }
 
-        /* Announcements */
         #announcement {
-            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; font-size: 2rem; font-weight: bold; letter-spacing: 0.2em;
-            opacity: 0; transition: opacity 0.5s; text-shadow: 0 0 15px #22c55e;
+            position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; font-size: 2.5rem; font-weight: bold; letter-spacing: 0.3em;
+            opacity: 0; transition: opacity 0.4s; text-shadow: 0 0 20px #22c55e;
         }
     </style>
 </head>
 <body>
 
-    <!-- Initialization Screen -->
     <div id="start-screen">
-        <h1 class="hud-text text-3xl font-bold mb-2 tracking-widest text-center">AR COMBAT</h1>
-        <p class="hud-text text-sm mb-8">5-LEVEL PROTOCOL</p>
-        <button id="btn-init" class="px-8 py-4 bg-green-500/20 border-2 border-green-500 hud-text rounded hover:bg-green-500/40 transition">
-            INITIALIZE SENSORS<br><span class="text-xs opacity-70">(TAP TO START)</span>
+        <h1 class="hud-text text-3xl font-bold mb-4 tracking-tighter">RE-CALIBRATING...</h1>
+        <button id="btn-init" class="px-10 py-5 bg-green-900/30 border-2 border-green-500 hud-text rounded-lg hover:bg-green-500/20 transition-all">
+            SYNC NEURAL LINK<br><span class="text-[10px] opacity-60">(ENABLE SENSORS)</span>
         </button>
     </div>
 
-    <!-- UI Layer -->
     <div id="ui-layer">
         <div id="announcement" class="hud-text">LEVEL 1</div>
 
-        <!-- Top HUD -->
         <div class="flex justify-between items-start p-6">
-            <div class="hud-text bg-black/50 p-2 hud-border rounded backdrop-blur-sm flex gap-4">
+            <div class="hud-text bg-black/60 p-3 hud-border rounded backdrop-blur-md flex gap-6">
                 <div>
-                    <div class="text-[10px] opacity-70">LEVEL</div>
-                    <div id="level-display" class="text-xl font-bold">1/5</div>
+                    <div class="text-[10px] opacity-60">PHASE</div>
+                    <div id="level-display" class="text-xl font-bold italic">1</div>
                 </div>
                 <div>
-                    <div class="text-[10px] opacity-70 text-red-400">REMAINING</div>
+                    <div class="text-[10px] opacity-60 text-red-400">HOSTILES</div>
                     <div id="enemy-count" class="text-xl font-bold text-red-500">0</div>
                 </div>
             </div>
-            <div class="hud-text bg-black/50 p-2 hud-border rounded text-right backdrop-blur-sm">
-                <div class="text-[10px] opacity-70">OPTICS</div>
-                <div id="zoom-level" class="text-xl font-bold">1X</div>
+            <div class="hud-text bg-black/60 p-3 hud-border rounded text-right backdrop-blur-md">
+                <div class="text-[10px] opacity-60">ZOOM</div>
+                <div id="zoom-level" class="text-xl font-bold">1.0X</div>
             </div>
         </div>
 
-        <!-- Crosshairs -->
         <div id="crosshair-dot"></div>
         <div id="scope-reticle"></div>
 
-        <!-- Controls -->
-        <div id="btn-scope" class="action-btn pointer-events-auto">SCOPE</div>
+        <div id="btn-scope" class="action-btn pointer-events-auto">ZOOM</div>
         <div id="btn-fire" class="action-btn btn-red pointer-events-auto">FIRE</div>
     </div>
 
     <script>
-        // --- Globals & Config ---
-        let scene, camera, renderer, cubeGroup, enemyGroup;
+        let scene, camera, renderer, enemyGroup;
         let sensorData = { alpha: 0, beta: 0, gamma: 0 };
         let isZoomed = false;
         let audioCtx;
         
-        // Environment Config (Expanded)
         const PLAYER_HEIGHT = 1.78; 
         const ROOM_WIDTH = 20.0; 
         const ROOM_HEIGHT = 8.0; 
         const ROOM_DEPTH = 20.0;
-        const DEFAULT_FOV = 75;
-        const ZOOM_FOV = 25;
+        const DEFAULT_FOV = 70;
+        const ZOOM_FOV = 22;
 
-        // Dynamic Arrays
-        const lasers = [];
-        const particles = [];
-
-        // Level System Config
+        const lasers = [], particles = [];
         const levels = [
-            { id: 1, total: 5, concurrent: 2, speedMultiplier: 0.5 }, // Easy, slow
-            { id: 2, total: 10, concurrent: 4, speedMultiplier: 0.8 },
-            { id: 3, total: 15, concurrent: 6, speedMultiplier: 1.2 },
-            { id: 4, total: 20, concurrent: 8, speedMultiplier: 1.6 },
-            { id: 5, total: 30, concurrent: 12, speedMultiplier: 2.2 } // Hard, fast, many
+            { id: 1, total: 5, concurrent: 3, speed: 0.35 },
+            { id: 2, total: 10, concurrent: 5, speed: 0.6 },
+            { id: 3, total: 15, concurrent: 7, speed: 1.0 },
+            { id: 4, total: 25, concurrent: 9, speed: 1.5 },
+            { id: 5, total: 40, concurrent: 12, speed: 2.1 }
         ];
         
-        let currentLevel = 0; // Index
-        let state = 'start'; // 'start', 'playing', 'transition', 'completed'
-        let spawnedThisLevel = 0;
-        let killedThisLevel = 0;
-        let lastSpawnTime = 0;
+        let currentLevel = 0;
+        let state = 'start';
+        let spawnedThisLevel = 0, killedThisLevel = 0, lastSpawnTime = 0;
 
-        // --- Initialization ---
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
-
             camera = new THREE.PerspectiveCamera(DEFAULT_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, PLAYER_HEIGHT, 0);
             camera.rotation.order = 'YXZ';
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            createEnvironment();
+            createRoom();
             enemyGroup = new THREE.Group();
             scene.add(enemyGroup);
 
-            window.addEventListener('resize', onWindowResize, false);
-            
+            window.addEventListener('resize', onWindowResize);
             document.getElementById('btn-init').addEventListener('click', startSystem);
             
-            const btnFire = document.getElementById('btn-fire');
-            const btnScope = document.getElementById('btn-scope');
+            const fire = document.getElementById('btn-fire');
+            const scope = document.getElementById('btn-scope');
             
-            btnFire.addEventListener('touchstart', (e) => { e.preventDefault(); shoot(); });
-            btnFire.addEventListener('mousedown', (e) => { e.preventDefault(); shoot(); });
+            const handleFire = (e) => { e.preventDefault(); shoot(); };
+            fire.addEventListener('touchstart', handleFire);
+            fire.addEventListener('mousedown', handleFire);
             
-            btnScope.addEventListener('touchstart', (e) => { e.preventDefault(); toggleScope(); });
-            btnScope.addEventListener('mousedown', (e) => { e.preventDefault(); toggleScope(); });
+            const handleScope = (e) => { e.preventDefault(); toggleScope(); };
+            scope.addEventListener('touchstart', handleScope);
+            scope.addEventListener('mousedown', handleScope);
 
             animate();
         }
 
-        async function startSystem() {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioCtx = new AudioContext();
-
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', handleGyro);
-                    }
-                } catch (e) { console.error(e); }
-            } else {
-                window.addEventListener('deviceorientation', handleGyro);
-            }
-
-            document.getElementById('start-screen').style.display = 'none';
-            document.getElementById('ui-layer').style.display = 'block';
-            
-            startNextLevel();
-        }
-
-        // --- Level Management ---
-        function startNextLevel() {
-            if (currentLevel >= levels.length) {
-                showAnnouncement("ALL LEVELS CLEARED", true);
-                state = 'completed';
-                return;
-            }
-
-            state = 'transition';
-            spawnedThisLevel = 0;
-            killedThisLevel = 0;
-            
-            const config = levels[currentLevel];
-            document.getElementById('level-display').innerText = `${config.id}/5`;
-            updateHUD();
-
-            showAnnouncement(`LEVEL ${config.id}`, false);
-            
-            setTimeout(() => {
-                state = 'playing';
-            }, 2000);
-        }
-
-        function showAnnouncement(text, permanent) {
-            const el = document.getElementById('announcement');
-            el.innerText = text;
-            el.style.opacity = 1;
-            if (!permanent) {
-                setTimeout(() => { el.style.opacity = 0; }, 1500);
-            }
-        }
-
-        function updateHUD() {
-            if(state === 'completed') return;
-            const config = levels[currentLevel];
-            const remaining = config.total - killedThisLevel;
-            document.getElementById('enemy-count').innerText = remaining;
-        }
-
-        function handleGyro(event) {
-            sensorData.alpha = event.alpha; 
-            sensorData.beta = event.beta;   
-            sensorData.gamma = event.gamma; 
-        }
-
-        function createEnvironment() {
-            cubeGroup = new THREE.Group();
-            
-            // Wireframe Room (20x20)
-            const boxGeom = new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH);
-            const edges = new THREE.EdgesGeometry(boxGeom);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x004400, transparent: true, opacity: 0.5 });
-            const wireframe = new THREE.LineSegments(edges, lineMat);
-            wireframe.position.y = ROOM_HEIGHT / 2; 
-            cubeGroup.add(wireframe);
-
-            // Dotted Walls
-            const dotMaterial = new THREE.PointsMaterial({ color: 0x118833, size: 0.05, transparent: true, opacity: 0.4 });
-            const dotPositions = [];
-            const density = 1; // 1 dot per meter for larger room
+        function createRoom() {
+            const group = new THREE.Group();
             const halfW = ROOM_WIDTH / 2;
             const halfD = ROOM_DEPTH / 2;
 
-            for(let x = -halfW; x <= halfW; x += 1/density) {
-                for(let z = -halfD; z <= halfD; z += 1/density) {
-                    dotPositions.push(x, 0, z); // Floor
-                    dotPositions.push(x, ROOM_HEIGHT, z); // Ceiling
-                }
-            }
-            for(let y = 0; y <= ROOM_HEIGHT; y += 1/density) {
-                for(let x = -halfW; x <= halfW; x += 1/density) {
-                    dotPositions.push(x, y, -halfD);
-                    dotPositions.push(x, y, halfD);
-                }
-                for(let z = -halfD; z <= halfD; z += 1/density) {
-                    dotPositions.push(-halfW, y, z);
-                    dotPositions.push(halfW, y, z);
-                }
-            }
+            // Neon Illuminated Borders
+            const boxGeom = new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH);
+            const edges = new THREE.EdgesGeometry(boxGeom);
+            
+            // Primary lines
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
+            const wireframe = new THREE.LineSegments(edges, lineMat);
+            wireframe.position.y = ROOM_HEIGHT / 2;
+            group.add(wireframe);
 
+            // "Glow" lines (thicker illuminated effect)
+            const glowMat = new THREE.LineBasicMaterial({ color: 0x33ff33, transparent: true, opacity: 0.8 });
+            const glowWireframe = new THREE.LineSegments(edges, glowMat);
+            glowWireframe.position.y = ROOM_HEIGHT / 2;
+            glowWireframe.scale.set(1.005, 1.005, 1.005);
+            group.add(glowWireframe);
+
+            // Tactical dots
+            const dotMat = new THREE.PointsMaterial({ color: 0x004400, size: 0.04 });
+            const positions = [];
+            for(let x = -halfW; x <= halfW; x += 2) {
+                for(let z = -halfD; z <= halfD; z += 2) {
+                    positions.push(x, 0, z); // Floor
+                    positions.push(x, ROOM_HEIGHT, z); // Ceiling
+                }
+            }
             const dotGeom = new THREE.BufferGeometry();
-            dotGeom.setAttribute('position', new THREE.Float32BufferAttribute(dotPositions, 3));
-            const points = new THREE.Points(dotGeom, dotMaterial);
-            cubeGroup.add(points);
-            scene.add(cubeGroup);
+            dotGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            group.add(new THREE.Points(dotGeom, dotMat));
+
+            scene.add(group);
         }
 
-        // --- Audio ---
-        function playSound(type) {
-            if (!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            
-            if (type === 'laser') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
-                osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.15); 
-                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.15);
-            } else if (type === 'explosion') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 0.3);
-                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        async function startSystem() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                const res = await DeviceOrientationEvent.requestPermission();
+                if (res === 'granted') window.addEventListener('deviceorientation', e => sensorData = e);
+            } else {
+                window.addEventListener('deviceorientation', e => sensorData = e);
             }
-            
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'block';
+            startNextLevel();
         }
 
-        // --- Mechanics ---
+        function startNextLevel() {
+            if (currentLevel >= levels.length) {
+                state = 'completed';
+                document.getElementById('announcement').innerText = "MISSION COMPLETE";
+                document.getElementById('announcement').style.opacity = 1;
+                return;
+            }
+            state = 'transition';
+            spawnedThisLevel = killedThisLevel = 0;
+            const lvl = levels[currentLevel];
+            document.getElementById('level-display').innerText = lvl.id;
+            updateHUD();
+            const announce = document.getElementById('announcement');
+            announce.innerText = `LEVEL ${lvl.id}`;
+            announce.style.opacity = 1;
+            setTimeout(() => { announce.style.opacity = 0; state = 'playing'; }, 2000);
+        }
+
+        function updateHUD() {
+            const config = levels[currentLevel];
+            document.getElementById('enemy-count').innerText = config ? config.total - killedThisLevel : 0;
+        }
+
+        function playSfx(freq, slide, dur, type = 'sawtooth') {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(slide, audioCtx.currentTime + dur);
+            g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        }
+
         function shoot() {
             if(state !== 'playing') return;
-            playSound('laser');
-
-            const geom = new THREE.CylinderGeometry(0.01, 0.01, 2, 8);
+            playSfx(1000, 100, 0.1);
+            const geom = new THREE.CylinderGeometry(0.01, 0.01, 2, 6);
             geom.rotateX(Math.PI / 2);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-            const laser = new THREE.Mesh(geom, mat);
-            
+            const laser = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: 0xff4400 }));
             laser.position.copy(camera.position);
             laser.quaternion.copy(camera.quaternion);
-            laser.translateY(-0.1);
-            laser.translateZ(-0.5);
-
+            laser.translateY(-0.1); laser.translateZ(-0.5);
             scene.add(laser);
-            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            lasers.push({ mesh: laser, dir: direction, life: 60 });
+            lasers.push({ mesh: laser, dir: new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion), life: 50 });
 
-            // Raycast Detection
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); 
-            
-            const intersects = raycaster.intersectObjects(enemyGroup.children, true);
-            
-            if (intersects.length > 0) {
-                let hitObj = intersects[0].object;
-                while (hitObj.parent !== enemyGroup) {
-                    hitObj = hitObj.parent;
-                    if(!hitObj) break;
-                }
-                
-                if (hitObj && hitObj.userData.isEnemy && !hitObj.userData.dead) {
-                    hitObj.userData.dead = true; // Prevent double kill
-                    createExplosion(hitObj.position, hitObj.userData.type);
-                    enemyGroup.remove(hitObj);
-                    
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = ray.intersectObjects(enemyGroup.children, true);
+            if (hits.length > 0) {
+                let hit = hits[0].object;
+                while(hit.parent !== enemyGroup) hit = hit.parent;
+                if(hit && !hit.dead) {
+                    hit.dead = true;
+                    explode(hit.position, hit.type);
+                    enemyGroup.remove(hit);
                     killedThisLevel++;
                     updateHUD();
-
                     if (killedThisLevel >= levels[currentLevel].total) {
-                        currentLevel++;
-                        startNextLevel();
+                        currentLevel++; startNextLevel();
                     }
                 }
             }
@@ -352,102 +267,50 @@
             isZoomed = !isZoomed;
             camera.fov = isZoomed ? ZOOM_FOV : DEFAULT_FOV;
             camera.updateProjectionMatrix();
-
-            document.getElementById('zoom-level').innerText = isZoomed ? '3X' : '1X';
+            document.getElementById('zoom-level').innerText = isZoomed ? '3.5X' : '1.0X';
             document.getElementById('scope-reticle').style.display = isZoomed ? 'block' : 'none';
             document.getElementById('crosshair-dot').style.display = isZoomed ? 'none' : 'block';
         }
 
-        // --- Enemies ---
-        function spawnEnemy(speedMultiplier) {
-            const enemy = new THREE.Group();
-            enemy.userData.isEnemy = true;
-            
-            const type = Math.random() > 0.5 ? 'mosquito' : 'ufo';
-            enemy.userData.type = type;
+        function spawnEnemy(speedMult) {
+            const group = new THREE.Group();
+            const type = Math.random() > 0.4 ? 'mosquito' : 'ufo';
+            group.type = type;
+            group.dead = false;
 
-            if (type === 'mosquito') {
-                // Mosquito (Red/Yellow)
-                const bodyGeom = new THREE.OctahedronGeometry(0.15, 0); // Smaller
-                const bodyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-                const body = new THREE.Mesh(bodyGeom, bodyMat);
-                
-                const edges = new THREE.EdgesGeometry(bodyGeom);
-                const edgeMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
-                const outline = new THREE.LineSegments(edges, edgeMat);
-                outline.scale.set(1.2, 1.2, 1.2);
-                
-                enemy.add(body); enemy.add(outline);
-                
-                // Erratic speed
-                enemy.userData.vx = (Math.random() - 0.5) * 0.08 * speedMultiplier;
-                enemy.userData.vy = (Math.random() - 0.5) * 0.08 * speedMultiplier;
-                enemy.userData.vz = (Math.random() - 0.5) * 0.08 * speedMultiplier;
+            if(type === 'mosquito') {
+                const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+                const o = new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry), new THREE.LineBasicMaterial({ color: 0xffff00 }));
+                o.scale.set(1.2, 1.2, 1.2);
+                group.add(b, o);
+                group.vx = (Math.random()-0.5) * 0.06 * speedMult;
+                group.vy = (Math.random()-0.5) * 0.06 * speedMult;
+                group.vz = (Math.random()-0.5) * 0.06 * speedMult;
             } else {
-                // UFO (Green)
-                const bodyGeom = new THREE.SphereGeometry(0.2, 8, 8);
-                const bodyMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-                const body = new THREE.Mesh(bodyGeom, bodyMat);
-                body.scale.set(1.5, 0.4, 1.5); // Flattened
-                
-                const edges = new THREE.EdgesGeometry(bodyGeom);
-                const edgeMat = new THREE.LineBasicMaterial({ color: 0x88ff88, linewidth: 2 });
-                const outline = new THREE.LineSegments(edges, edgeMat);
-                outline.scale.set(1.6, 0.5, 1.6);
-
-                enemy.add(body); enemy.add(outline);
-
-                // Smooth hover speed
-                enemy.userData.vx = (Math.random() > 0.5 ? 1 : -1) * 0.03 * speedMultiplier;
-                enemy.userData.vy = 0; // Handled by sine wave
-                enemy.userData.vz = (Math.random() > 0.5 ? 1 : -1) * 0.03 * speedMultiplier;
-                enemy.userData.baseY = 0; // Assigned in position setting
-                enemy.userData.time = Math.random() * 100;
+                const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.1, 8), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+                const o = new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry), new THREE.LineBasicMaterial({ color: 0x88ff88 }));
+                o.scale.set(1.1, 1.1, 1.1);
+                group.add(b, o);
+                group.vx = (Math.random()-0.5) * 0.04 * speedMult;
+                group.vy = 0; group.vz = (Math.random()-0.5) * 0.04 * speedMult;
+                group.baseY = 1 + Math.random()*5; group.t = Math.random()*10;
             }
 
-            // Position: Random but forced to be FAR (Radius between 5m and 9m)
-            const radius = 5 + Math.random() * 4; 
-            const angle = Math.random() * Math.PI * 2;
-            const py = 1.0 + Math.random() * (ROOM_HEIGHT - 2.0);
-            
-            enemy.position.set(
-                Math.cos(angle) * radius,
-                py,
-                Math.sin(angle) * radius
-            );
-            
-            if(type === 'ufo') enemy.userData.baseY = py;
-
-            enemyGroup.add(enemy);
+            const r = 6 + Math.random()*8, a = Math.random()*Math.PI*2;
+            group.position.set(Math.cos(a)*r, 1 + Math.random()*(ROOM_HEIGHT-2), Math.sin(a)*r);
+            enemyGroup.add(group);
         }
 
-        function createExplosion(pos, type) {
-            playSound('explosion');
-            const count = 15;
-            const geom = new THREE.BoxGeometry(0.08, 0.08, 0.08);
-            
-            let mats;
-            if (type === 'mosquito') {
-                mats = [new THREE.MeshBasicMaterial({ color: 0xff0000 }), new THREE.MeshBasicMaterial({ color: 0xffff00 })];
-            } else {
-                mats = [new THREE.MeshBasicMaterial({ color: 0x00ff00 }), new THREE.MeshBasicMaterial({ color: 0xffffff })];
-            }
-
-            for(let i=0; i<count; i++) {
-                const mesh = new THREE.Mesh(geom, mats[i % 2]);
-                mesh.position.copy(pos);
-                scene.add(mesh);
-                particles.push({
-                    mesh: mesh,
-                    vx: (Math.random() - 0.5) * 0.3,
-                    vy: (Math.random() - 0.5) * 0.3,
-                    vz: (Math.random() - 0.5) * 0.3,
-                    life: 30
-                });
+        function explode(pos, type) {
+            playSfx(150, 40, 0.3, 'square');
+            const col = type === 'ufo' ? 0x00ff00 : 0xff0000;
+            for(let i=0; i<12; i++) {
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,0.08), new THREE.MeshBasicMaterial({ color: col }));
+                p.position.copy(pos); scene.add(p);
+                particles.push({ mesh:p, v:new THREE.Vector3((Math.random()-0.5)*0.25, (Math.random()-0.5)*0.25, (Math.random()-0.5)*0.25), life:30 });
             }
         }
 
-        // --- Render Loop ---
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -457,78 +320,46 @@
         function animate(time) {
             requestAnimationFrame(animate);
 
-            // Gyro Update
             if (sensorData) {
-                const alpha = sensorData.alpha ? THREE.MathUtils.degToRad(sensorData.alpha) : 0;
-                const beta = sensorData.beta ? THREE.MathUtils.degToRad(sensorData.beta) : 0;
-                const gamma = sensorData.gamma ? THREE.MathUtils.degToRad(sensorData.gamma) : 0;
-                camera.rotation.set(beta - Math.PI / 2, -gamma, -alpha, 'YXZ');
+                // SENSOR CORRECTION
+                // beta is pitch (X rotation), alpha is yaw (Y rotation), gamma is roll (Z rotation)
+                // We use -Math.PI/2 to compensate for phone being held upright
+                const pitch = THREE.MathUtils.degToRad(sensorData.beta) - Math.PI/2;
+                const yaw = -THREE.MathUtils.degToRad(sensorData.alpha);
+                const roll = -THREE.MathUtils.degToRad(sensorData.gamma);
+                camera.rotation.set(pitch, yaw, roll, 'YXZ');
             }
 
-            // Game Logic
             if (state === 'playing') {
-                const config = levels[currentLevel];
-                
-                // Spawn Controller: Wait ~1.5s between spawns to avoid clustering
-                if (spawnedThisLevel < config.total && enemyGroup.children.length < config.concurrent) {
-                    if (time - lastSpawnTime > 1500) {
-                        spawnEnemy(config.speedMultiplier);
-                        spawnedThisLevel++;
-                        lastSpawnTime = time;
-                    }
+                const cfg = levels[currentLevel];
+                if (spawnedThisLevel < cfg.total && enemyGroup.children.length < cfg.concurrent && time - lastSpawnTime > 1200) {
+                    spawnEnemy(cfg.speed); spawnedThisLevel++; lastSpawnTime = time;
                 }
-
-                // Update Enemies
-                const boundsW = ROOM_WIDTH / 2 - 0.5;
-                const boundsD = ROOM_DEPTH / 2 - 0.5;
-
-                enemyGroup.children.forEach(enemy => {
-                    enemy.position.x += enemy.userData.vx;
-                    enemy.position.z += enemy.userData.vz;
-                    
-                    if (enemy.userData.type === 'mosquito') {
-                        enemy.position.y += enemy.userData.vy;
-                        enemy.rotation.y += 0.05;
-                        enemy.rotation.z += 0.02;
-                        if(enemy.position.y > ROOM_HEIGHT - 0.5 || enemy.position.y < 0.5) enemy.userData.vy *= -1;
-                    } else {
-                        // UFO smooth hover
-                        enemy.userData.time += 0.05;
-                        enemy.position.y = enemy.userData.baseY + Math.sin(enemy.userData.time) * 0.5;
-                        enemy.rotation.y += 0.02;
-                    }
-
-                    // Bounce off walls
-                    if(Math.abs(enemy.position.x) > boundsW) enemy.userData.vx *= -1;
-                    if(Math.abs(enemy.position.z) > boundsD) enemy.userData.vz *= -1;
+                const bw = ROOM_WIDTH/2 - 0.5, bd = ROOM_DEPTH/2 - 0.5;
+                enemyGroup.children.forEach(e => {
+                    e.position.x += e.vx; e.position.z += e.vz;
+                    if(e.type === 'mosquito') { e.position.y += e.vy; if(e.position.y > ROOM_HEIGHT-1 || e.position.y < 1) e.vy *= -1; }
+                    else { e.t += 0.04; e.position.y = e.baseY + Math.sin(e.t)*0.5; }
+                    if(Math.abs(e.position.x) > bw) e.vx *= -1;
+                    if(Math.abs(e.position.z) > bd) e.vz *= -1;
+                    e.rotation.y += 0.03;
                 });
             }
 
-            // Visual Updates (Lasers & Particles)
-            for (let i = lasers.length - 1; i >= 0; i--) {
-                const l = lasers[i];
-                l.mesh.position.addScaledVector(l.dir, 0.8); // Fast laser
-                l.life--;
-                if (l.life <= 0) { scene.remove(l.mesh); lasers.splice(i, 1); }
-            }
-
-            for (let i = particles.length - 1; i >= 0; i--) {
-                const p = particles[i];
-                p.mesh.position.x += p.vx;
-                p.mesh.position.y += p.vy;
-                p.mesh.position.z += p.vz;
-                p.mesh.scale.multiplyScalar(0.85); 
-                p.life--;
-                if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
-            }
+            lasers.forEach((l, i) => { 
+                l.mesh.position.addScaledVector(l.dir, 0.7); l.life--; 
+                if(l.life <= 0) { scene.remove(l.mesh); lasers.splice(i, 1); }
+            });
+            particles.forEach((p, i) => {
+                p.mesh.position.add(p.v); p.mesh.scale.multiplyScalar(0.9); p.life--;
+                if(p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+            });
 
             renderer.render(scene, camera);
         }
-
-        window.onload = init;
+        init();
     </script>
 </body>
 </html>
-
 
 ```
