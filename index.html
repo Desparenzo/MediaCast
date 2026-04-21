@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gyro Calibration Tool</title>
+    <title>Gyro Calibration Tool - Portrait Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -35,17 +35,17 @@
 
     <div id="ui">
         <div id="data-panel">
-            <div class="axis-label">Alpha (Yaw / Compass)</div>
+            <div class="axis-label">Alpha (Z - Compass/Yaw)</div>
             <div id="val-alpha" class="val">0.00°</div>
-            <div class="axis-label">Beta (Pitch / Tilt)</div>
+            <div class="axis-label">Beta (X - Pitch/Tilt)</div>
             <div id="val-beta" class="val">0.00°</div>
-            <div class="axis-label">Gamma (Roll / Steering)</div>
+            <div class="axis-label">Gamma (Y - Roll/Steer)</div>
             <div id="val-gamma" class="val">0.00°</div>
             <hr style="border: 0; border-top: 1px solid #030; margin: 10px 0;">
-            <div style="font-size: 10px; color: #aaa;">Target: Beta ~90, Gamma ~0 while upright</div>
+            <div style="font-size: 10px; color: #0f0;">PORTRAIT MODE STABILIZED</div>
         </div>
 
-        <button id="start-btn" class="overlay-btn">Calibrate Upright Axis</button>
+        <button id="start-btn" class="overlay-btn">Sync Upright Position</button>
     </div>
 
     <script>
@@ -55,43 +55,43 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 0, 6);
+            camera.position.set(0, 0, 7);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // Create a Phone Slab
-            const geometry = new THREE.BoxGeometry(2, 4, 0.2);
+            // Phone Body (Slab)
+            const geometry = new THREE.BoxGeometry(2.5, 5, 0.3);
             const material = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100 });
             phoneProxy = new THREE.Mesh(geometry, material);
             
-            // Screen side (Green)
-            const screenGeom = new THREE.PlaneGeometry(1.8, 3.8);
-            const screenMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.3 });
+            // Screen (Green Face)
+            const screenGeom = new THREE.PlaneGeometry(2.3, 4.8);
+            const screenMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
             const screen = new THREE.Mesh(screenGeom, screenMat);
-            screen.position.z = 0.11;
+            screen.position.z = 0.16;
             phoneProxy.add(screen);
 
-            // Top marker (Red)
-            const topGeom = new THREE.BoxGeometry(0.5, 0.1, 0.21);
+            // Top Camera Bump (Red)
+            const topGeom = new THREE.BoxGeometry(1.0, 0.2, 0.31);
             const topMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
             const top = new THREE.Mesh(topGeom, topMat);
-            top.position.y = 2;
+            top.position.y = 2.4;
             phoneProxy.add(top);
             
             scene.add(phoneProxy);
 
-            // Visual Helpers
-            const grid = new THREE.GridHelper(10, 10, 0x004400, 0x002200);
+            // World Grid
+            const grid = new THREE.GridHelper(15, 15, 0x004400, 0x002200);
             grid.rotation.x = Math.PI / 2;
             scene.add(grid);
 
-            const light = new THREE.PointLight(0xffffff, 1);
+            const light = new THREE.PointLight(0xffffff, 1.2);
             light.position.set(5, 5, 10);
             scene.add(light);
-            scene.add(new THREE.AmbientLight(0x202020));
+            scene.add(new THREE.AmbientLight(0x333333));
 
             document.getElementById('start-btn').addEventListener('click', startSensors);
             window.addEventListener('resize', onResize);
@@ -123,23 +123,23 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // CONVERSION LOGIC FOR UPRIGHT PORTRAIT
+            // Convert to Radians
             const a = THREE.MathUtils.degToRad(sensorData.alpha);
             const b = THREE.MathUtils.degToRad(sensorData.beta);
             const g = THREE.MathUtils.degToRad(sensorData.gamma);
 
-            // To make the "Standing" position look correct, we need to adjust for the 90 degree tilt
-            // of the Beta axis. We use YXZ order for stability in Portrait mode.
+            // FIX: THE PORTRAIT ORIENTATION MAPPING
+            // We use a different Euler sequence to account for the phone standing up.
+            // When standing, Z (alpha) is yaw, X (beta) is pitch, Y (gamma) is roll.
+            // But the browser reports these relative to the phone lying FLAT.
             const euler = new THREE.Euler(b, a, -g, 'YXZ');
-            
-            // Apply the sensor rotation
             phoneProxy.quaternion.setFromEuler(euler);
 
-            // Crucial Adjustment:
-            // The browser thinks a phone at beta=90 is "upright". 
-            // We rotate our 3D model base by -90 on X so that it matches your physical reality.
-            const offset = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-            phoneProxy.quaternion.premultiply(offset);
+            // THE CRITICAL "STAND UP" TRANSFORM:
+            // We rotate the base orientation so that the model's "Vertical" (Portrait) 
+            // alignment matches the browser's 90-degree Beta reading.
+            const standUpOffset = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+            phoneProxy.quaternion.premultiply(standUpOffset);
 
             renderer.render(scene, camera);
         }
