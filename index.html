@@ -3,247 +3,254 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sensor Test Lab</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Global Compass | গ্লোবাল কম্পাস</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .sensor-card {
-            transition: all 0.3s ease;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&family=Hind+Siliguri:wght@300;500;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Hind Siliguri', sans-serif;
+            background-color: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem 1rem;
         }
-        .active-pulse {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+        .bn-text {
+            font-size: 0.85em;
+            opacity: 0.8;
+            display: block;
+            font-weight: 400;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .7; }
+
+        .compass-container {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            transition: transform 0.1s ease-out;
         }
-        canvas {
+
+        .compass-ring {
             width: 100%;
-            height: 100px;
-            background: #f3f4f6;
-            border-radius: 8px;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid #222;
+            position: relative;
+            background: radial-gradient(circle, #0a0a0a 0%, #000 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+        }
+
+        .direction {
+            position: absolute;
+            text-align: center;
+            line-height: 1;
+        }
+
+        .dir-n { top: 15px; color: #ff4d4d; font-weight: 700; font-size: 1.4rem; }
+        .dir-s { bottom: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
+        .dir-e { right: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
+        .dir-w { left: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
+
+        .needle {
+            position: absolute;
+            width: 2px;
+            height: 120px;
+            background: linear-gradient(to bottom, #ff4d4d 50%, #444 50%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+
+        .center-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #fff;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 11;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .info-card {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 12px;
+            width: 100%;
+            max-width: 360px;
+            text-align: center;
+        }
+
+        .glow-text {
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans min-h-screen">
+<body>
 
-    <div class="max-w-md mx-auto p-4 pb-20">
-        <header class="mb-6 text-center">
-            <h1 class="text-3xl font-extrabold text-indigo-600">Sensor Lab</h1>
-            <p class="text-gray-500">HTTPS Sensor Diagnostics</p>
-        </header>
-
-        <!-- Permissions/Start Action -->
-        <div id="setup-box" class="bg-indigo-100 p-6 rounded-2xl mb-6 shadow-sm border border-indigo-200">
-            <h2 class="font-bold text-indigo-800 mb-2">Permissions Required</h2>
-            <p class="text-sm text-indigo-700 mb-4">Browsers require a user gesture to access motion and location data. Click below to begin the handshake.</p>
-            <button id="start-btn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-transform">
-                Unlock All Sensors
-            </button>
+    <!-- Clock & Weather -->
+    <div class="info-card">
+        <div id="clock-container" class="mb-1">
+            <div id="clock" class="text-3xl font-bold tracking-tighter glow-text text-blue-400">00:00:00</div>
+            <div id="clock-bn" class="text-xs text-blue-900 font-medium">০০:০০:০০</div>
         </div>
-
-        <div id="sensor-list" class="space-y-4 opacity-50 pointer-events-none">
-            
-            <!-- GPS Sensor -->
-            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-700 flex items-center">
-                        <span class="mr-2">📍</span> Geolocation (GPS)
-                    </h3>
-                    <span id="gps-status" class="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-400">Idle</span>
-                </div>
-                <div class="grid grid-cols-2 gap-2 text-sm">
-                    <div class="bg-gray-50 p-2 rounded">Lat: <span id="lat" class="font-mono font-bold">-</span></div>
-                    <div class="bg-gray-50 p-2 rounded">Lon: <span id="lon" class="font-mono font-bold">-</span></div>
-                    <div class="bg-gray-50 p-2 rounded">Acc: <span id="gps-acc" class="font-mono font-bold">-</span>m</div>
-                    <div class="bg-gray-50 p-2 rounded">Alt: <span id="alt" class="font-mono font-bold">-</span>m</div>
-                </div>
-            </div>
-
-            <!-- Accelerometer & Gyro -->
-            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-700 flex items-center">
-                        <span class="mr-2">📳</span> Motion & Orientation
-                    </h3>
-                    <span id="motion-status" class="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-400">Waiting</span>
-                </div>
-                <div class="space-y-2 text-sm">
-                    <div class="flex justify-between border-b pb-1">
-                        <span>Alpha (Z):</span> <span id="alpha" class="font-mono font-bold">0°</span>
-                    </div>
-                    <div class="flex justify-between border-b pb-1">
-                        <span>Beta (X):</span> <span id="beta" class="font-mono font-bold">0°</span>
-                    </div>
-                    <div class="flex justify-between border-b pb-1">
-                        <span>Gamma (Y):</span> <span id="gamma" class="font-mono font-bold">0°</span>
-                    </div>
-                    <div class="mt-4">
-                        <p class="text-xs text-gray-400 mb-1 uppercase font-bold tracking-widest">Acceleration (m/s²)</p>
-                        <canvas id="motionChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Camera Test -->
-            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-700 flex items-center">
-                        <span class="mr-2">📷</span> Camera / Visual
-                    </h3>
-                    <button id="cam-btn" class="text-xs font-bold text-indigo-600 uppercase">Toggle Test</button>
-                </div>
-                <div id="cam-preview-container" class="hidden rounded-lg overflow-hidden bg-black aspect-video relative">
-                    <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
-                </div>
-            </div>
-
-            <!-- Generic Sensors (Modern API) -->
-            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <h3 class="font-bold text-gray-700 mb-2">Environment (Experimental)</h3>
-                <div class="grid grid-cols-1 gap-2 text-sm">
-                    <div class="flex justify-between bg-gray-50 p-2 rounded">
-                        <span>Ambient Light:</span>
-                        <span id="lux-val" class="font-mono font-bold">Unsupported</span>
-                    </div>
-                    <div class="flex justify-between bg-gray-50 p-2 rounded">
-                        <span>Magnetometer:</span>
-                        <span id="mag-val" class="font-mono font-bold">Unsupported</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-        
-        <div id="message-box" class="fixed bottom-4 left-4 right-4 bg-gray-800 text-white text-xs p-3 rounded-lg shadow-2xl opacity-0 transition-opacity pointer-events-none">
+        <div id="weather" class="text-sm mt-1 text-gray-400">
+            <span>Loading Weather...</span>
+            <span class="bn-text">আবহাওয়া লোড হচ্ছে...</span>
         </div>
     </div>
 
-    <script>
-        const startBtn = document.getElementById('start-btn');
-        const sensorList = document.getElementById('sensor-list');
-        const msgBox = document.getElementById('message-box');
+    <!-- GPS Coordinates -->
+    <div class="info-card">
+        <div class="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-1">GPS Location | জিপিএস অবস্থান</div>
+        <div id="coords" class="font-mono text-xs text-green-500">
+            LAT: -- | LON: --
+        </div>
+        <div id="coords-bn" class="font-mono text-[10px] text-green-800">
+            অক্ষাংশ: -- | দ্রাঘিমাংশ: --
+        </div>
+    </div>
 
-        let motionData = [];
-        const canvas = document.getElementById('motionChart');
-        const ctx = canvas.getContext('2d');
+    <!-- Compass -->
+    <div class="flex flex-col items-center">
+        <div id="heading-container" class="text-center mb-6">
+            <h2 id="heading-en" class="text-2xl font-bold text-white uppercase tracking-widest">NORTH</h2>
+            <h3 id="heading-bn" class="text-lg text-red-500 font-medium">উত্তর</h3>
+        </div>
 
-        function showMsg(text) {
-            msgBox.innerText = text;
-            msgBox.classList.add('opacity-100');
-            setTimeout(() => msgBox.classList.remove('opacity-100'), 3000);
-        }
-
-        // Initialize Sensors
-        startBtn.onclick = async () => {
-            startBtn.disabled = true;
-            startBtn.innerText = "Initializing...";
-            
-            try {
-                // 1. Request Device Orientation (iOS 13+ requirement)
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') throw new Error("Motion permission denied");
-                }
-
-                // 2. Start Motion Listening
-                window.addEventListener('deviceorientation', handleOrientation);
-                window.addEventListener('devicemotion', handleMotion);
-                document.getElementById('motion-status').innerText = "Streaming";
-                document.getElementById('motion-status').classList.replace('text-gray-400', 'text-green-600');
-
-                // 3. Request Geolocation
-                if ("geolocation" in navigator) {
-                    navigator.geolocation.watchPosition(
-                        (pos) => {
-                            document.getElementById('lat').innerText = pos.coords.latitude.toFixed(5);
-                            document.getElementById('lon').innerText = pos.coords.longitude.toFixed(5);
-                            document.getElementById('gps-acc').innerText = pos.coords.accuracy.toFixed(1);
-                            document.getElementById('alt').innerText = pos.coords.altitude ? pos.coords.altitude.toFixed(1) : 'N/A';
-                            document.getElementById('gps-status').innerText = "Active";
-                            document.getElementById('gps-status').classList.replace('text-gray-400', 'text-green-600');
-                        },
-                        (err) => showMsg("GPS Error: " + err.message),
-                        { enableHighAccuracy: true }
-                    );
-                }
-
-                // 4. Try Generic Sensor APIs (Chrome Android mostly)
-                if ('AmbientLightSensor' in window) {
-                    const sensor = new AmbientLightSensor();
-                    sensor.onreading = () => document.getElementById('lux-val').innerText = sensor.illuminance + " lux";
-                    sensor.onerror = (e) => console.warn(e);
-                    sensor.start();
-                }
+        <div class="compass-container" id="compass">
+            <div class="compass-ring">
+                <div class="direction dir-n">N<span class="bn-text !text-[10px]">উ</span></div>
+                <div class="direction dir-e" style="transform: rotate(90deg) translate(0, -110px) rotate(-90deg);">E<span class="bn-text !text-[10px]">পূ</span></div>
+                <div class="direction dir-s" style="transform: rotate(180deg) translate(0, -110px) rotate(-180deg);">S<span class="bn-text !text-[10px]">দ</span></div>
+                <div class="direction dir-w" style="transform: rotate(270deg) translate(0, -110px) rotate(-270deg);">W<span class="bn-text !text-[10px]">প</span></div>
                 
-                if ('Magnetometer' in window) {
-                    const mag = new Magnetometer();
-                    mag.onreading = () => document.getElementById('mag-val').innerText = `X:${mag.x.toFixed(1)} Y:${mag.y.toFixed(1)}`;
-                    mag.start();
-                }
+                <!-- Inter-cardinal small markers -->
+                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(45deg) translate(0, -110px) rotate(-45deg);">NE</div>
+                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(135deg) translate(0, -110px) rotate(-135deg);">SE</div>
+                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(225deg) translate(0, -110px) rotate(-225deg);">SW</div>
+                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(315deg) translate(0, -110px) rotate(-315deg);">NW</div>
 
-                // UI Finalize
-                document.getElementById('setup-box').classList.add('hidden');
-                sensorList.classList.remove('opacity-50', 'pointer-events-none');
-                requestAnimationFrame(drawGraph);
-                showMsg("Sensors ready!");
+                <div class="needle"></div>
+                <div class="center-dot"></div>
+            </div>
+        </div>
+        
+        <div class="mt-6 text-center">
+            <div id="degree-val" class="text-4xl font-light text-yellow-500 tracking-tighter">0°</div>
+            <div id="degree-bn" class="bn-text text-yellow-800">০° ডিগ্রি</div>
+        </div>
+    </div>
 
-            } catch (err) {
-                showMsg("Init Failed: " + err.message);
-                startBtn.disabled = false;
-                startBtn.innerText = "Try Again";
-            }
-        };
+    <!-- Status / Permission -->
+    <div id="status-area" class="w-full text-center p-2">
+        <button id="start-btn" class="bg-white text-black text-xs font-bold px-6 py-3 rounded-full uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-white/10">
+            Start Sensors | সেন্সর চালু করুন
+        </button>
+    </div>
 
-        function handleOrientation(e) {
-            document.getElementById('alpha').innerText = Math.round(e.alpha) + '°';
-            document.getElementById('beta').innerText = Math.round(e.beta) + '°';
-            document.getElementById('gamma').innerText = Math.round(e.gamma) + '°';
-        }
+    <script>
+        const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+        const toBn = (n) => n.toString().replace(/\d/g, d => bnDigits[d]);
 
-        function handleMotion(e) {
-            const acc = e.accelerationIncludingGravity;
-            if (!acc) return;
-            motionData.push(acc.y);
-            if (motionData.length > 100) motionData.shift();
-        }
-
-        function drawGraph() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#6366f1';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            const step = canvas.width / 100;
-            for (let i = 0; i < motionData.length; i++) {
-                const x = i * step;
-                const y = (canvas.height / 2) - (motionData[i] * 5);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-            requestAnimationFrame(drawGraph);
-        }
-
-        // Camera Toggle
-        let camStream = null;
-        document.getElementById('cam-btn').onclick = async () => {
-            const video = document.getElementById('video');
-            const container = document.getElementById('cam-preview-container');
+        function updateClock() {
+            const now = new Date();
+            // 24-hour format: HH:mm:ss
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
             
-            if (camStream) {
-                camStream.getTracks().forEach(track => track.stop());
-                camStream = null;
-                container.classList.add('hidden');
-            } else {
-                try {
-                    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    video.srcObject = camStream;
-                    container.classList.remove('hidden');
-                } catch (err) {
-                    showMsg("Camera access denied");
-                }
+            const timeStr = `${hours}:${minutes}:${seconds}`;
+            document.getElementById('clock').textContent = timeStr;
+            document.getElementById('clock-bn').textContent = toBn(timeStr);
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        async function fetchWeather(lat, lon) {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const data = await res.json();
+                const temp = Math.round(data.current_weather.temperature);
+                document.getElementById('weather').innerHTML = `
+                    <span>${temp}°C Current Temperature</span>
+                    <span class="bn-text">তাপমাত্রা: ${toBn(temp)}° সেলসিয়াস</span>
+                `;
+            } catch (e) {
+                document.getElementById('weather').textContent = "Weather Error | আবহাওয়া ত্রুটি";
             }
-        };
+        }
+
+        const directions = [
+            { en: "NORTH", bn: "উত্তর" },
+            { en: "NORTH-EAST", bn: "উত্তর-পূর্ব" },
+            { en: "EAST", bn: "পূর্ব" },
+            { en: "SOUTH-EAST", bn: "দক্ষিণ-পূর্ব" },
+            { en: "SOUTH", bn: "দক্ষিণ" },
+            { en: "SOUTH-WEST", bn: "দক্ষিণ-পশ্চিম" },
+            { en: "WEST", bn: "পশ্চিম" },
+            { en: "NORTH-WEST", bn: "উত্তর-পশ্চিম" }
+        ];
+
+        function getDir(deg) {
+            const index = Math.round(deg / 45) % 8;
+            return directions[index];
+        }
+
+        function handleOrientation(event) {
+            let heading = event.webkitCompassHeading || (360 - event.alpha);
+            if (heading === undefined) return;
+
+            const deg = Math.round(heading);
+            document.getElementById('compass').style.transform = `rotate(${-deg}deg)`;
+            document.getElementById('degree-val').textContent = `${deg}°`;
+            document.getElementById('degree-bn').textContent = `${toBn(deg)}° ডিগ্রি`;
+            
+            const dirNames = getDir(deg);
+            document.getElementById('heading-en').textContent = dirNames.en;
+            document.getElementById('heading-bn').textContent = dirNames.bn;
+        }
+
+        function init() {
+            // Location
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(pos => {
+                    const lat = pos.coords.latitude.toFixed(4);
+                    const lon = pos.coords.longitude.toFixed(4);
+                    document.getElementById('coords').textContent = `LAT: ${lat} | LON: ${lon}`;
+                    document.getElementById('coords-bn').textContent = `অক্ষাংশ: ${toBn(lat)} | দ্রাঘিমাংশ: ${toBn(lon)}`;
+                    fetchWeather(lat, lon);
+                });
+            }
+
+            // Compass Logic
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(state => {
+                    if (state === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        document.getElementById('status-area').style.display = 'none';
+                    }
+                });
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+                document.getElementById('status-area').style.display = 'none';
+            }
+        }
+
+        document.getElementById('start-btn').addEventListener('click', init);
     </script>
 </body>
 </html>
