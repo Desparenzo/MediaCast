@@ -3,150 +3,205 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gyro Sensor Capture</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gyro Sensor Tester</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { 
-            margin: 0; 
-            background-color: #000; 
-            color: #0f0; 
-            font-family: 'Courier New', monospace; 
-            touch-action: none;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: system-ui, -apple-system, sans-serif;
         }
-        .data-card {
-            border: 1px solid #0f0;
-            background: rgba(0, 20, 0, 0.5);
-            padding: 15px;
-            margin: 8px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
+        canvas {
+            display: block;
         }
-        .data-card.frozen {
-            border-color: #f00;
-            background: rgba(40, 0, 0, 0.5);
-        }
-        .val {
-            font-size: 2.8rem;
-            font-weight: bold;
-            color: #fff;
-        }
-        .frozen .val {
-            color: #f88;
-        }
-        .label {
-            font-size: 0.75rem;
-            color: #0f0;
-            opacity: 0.7;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-        .frozen .label {
-            color: #f00;
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
     </style>
 </head>
-<body>
+<body class="text-white">
 
-    <div class="flex-1 flex flex-col justify-center p-2">
-        <div id="card-alpha" class="data-card">
-            <div class="label">Alpha (Yaw / Body Turn)</div>
-            <div id="alpha" class="val">0.00</div>
-        </div>
+    <!-- UI Overlay -->
+    <div class="fixed inset-0 pointer-events-none flex flex-col p-6 z-10">
+        <header class="flex justify-between items-start w-full pointer-events-auto">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">Gyroscope Tester</h1>
+                <p class="text-slate-400 text-sm">Real-time IMU Data</p>
+            </div>
+            <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-lg pointer-events-auto hidden">
+                Enable Sensors
+            </button>
+        </header>
 
-        <div id="card-beta" class="data-card">
-            <div class="label">Beta (Pitch / Front-Back)</div>
-            <div id="beta" class="val">0.00</div>
-        </div>
+        <div class="mt-auto grid grid-cols-1 md:grid-cols-3 gap-4 pointer-events-auto">
+            <!-- Pitch -->
+            <div class="glass p-4 rounded-2xl">
+                <div class="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">Pitch (X)</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="pitchVal" class="text-3xl font-mono">0.0°</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
+                    <div id="pitchBar" class="bg-blue-500 h-full transition-all duration-75" style="width: 50%"></div>
+                </div>
+            </div>
 
-        <div id="card-gamma" class="data-card">
-            <div class="label">Gamma (Roll / Steering)</div>
-            <div id="gamma" class="val">0.00</div>
+            <!-- Roll -->
+            <div class="glass p-4 rounded-2xl">
+                <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">Roll (Z)</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="rollVal" class="text-3xl font-mono">0.0°</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
+                    <div id="rollBar" class="bg-emerald-500 h-full transition-all duration-75" style="width: 50%"></div>
+                </div>
+            </div>
+
+            <!-- Yaw -->
+            <div class="glass p-4 rounded-2xl">
+                <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">Yaw / Alpha (Y)</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="yawVal" class="text-3xl font-mono">0.0°</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
+                    <div id="yawBar" class="bg-amber-500 h-full transition-all duration-75" style="width: 50%"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="p-6 flex flex-col gap-4 items-center">
-        <button id="freeze-btn" class="hidden w-full max-w-xs bg-red-900 border-2 border-red-500 text-red-500 px-8 py-4 rounded-xl font-bold uppercase tracking-widest active:scale-95 transition-transform">
-            Freeze Data
-        </button>
-        
-        <button id="start" class="w-full max-w-xs bg-green-900 border-2 border-green-400 text-green-400 px-8 py-4 rounded-xl font-bold uppercase tracking-widest active:scale-95 transition-transform">
-            Start Sensors
-        </button>
-        
-        <p id="status-msg" class="text-[10px] text-green-700 uppercase">Awaiting initialization...</p>
-    </div>
+    <div id="canvas-container" class="fixed inset-0"></div>
 
     <script>
-        const alphaEl = document.getElementById('alpha');
-        const betaEl = document.getElementById('beta');
-        const gammaEl = document.getElementById('gamma');
-        
-        const startBtn = document.getElementById('start');
-        const freezeBtn = document.getElementById('freeze-btn');
-        const statusMsg = document.getElementById('status-msg');
-        
-        const cards = [
-            document.getElementById('card-alpha'),
-            document.getElementById('card-beta'),
-            document.getElementById('card-gamma')
-        ];
+        let scene, camera, renderer, phone;
+        let sensorActive = false;
 
-        let isFrozen = false;
+        function init3D() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        async function start() {
+            // Create Smartphone Shape
+            const geometry = new THREE.BoxGeometry(2.2, 4.5, 0.2);
+            
+            // Multi-material for screen and back
+            const materials = [
+                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // sides
+                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // sides
+                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // top
+                new THREE.MeshPhongMaterial({ color: 0x1e293b }), // bottom
+                new THREE.MeshPhongMaterial({ color: 0x3b82f6 }), // screen (front)
+                new THREE.MeshPhongMaterial({ color: 0x334155 })  // back
+            ];
+
+            phone = new THREE.Mesh(geometry, materials);
+            scene.add(phone);
+
+            // Add detail: "Screen" glow/border
+            const edges = new THREE.EdgesGeometry(geometry);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x60a5fa }));
+            phone.add(line);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            camera.position.z = 7;
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // If no sensor, slow auto-rotate to show it's working
+            if (!sensorActive) {
+                phone.rotation.y += 0.01;
+                phone.rotation.x = -0.5;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function updateData(alpha, beta, gamma) {
+            sensorActive = true;
+            
+            // Convert to Radians for Three.js
+            // alpha = yaw (0-360), beta = pitch (-180, 180), gamma = roll (-90, 90)
+            const pitchRad = THREE.MathUtils.degToRad(beta);
+            const rollRad = THREE.MathUtils.degToRad(gamma);
+            const yawRad = THREE.MathUtils.degToRad(alpha);
+
+            // Set rotation
+            phone.rotation.set(pitchRad, yawRad, rollRad);
+
+            // Update UI
+            document.getElementById('pitchVal').innerText = beta.toFixed(1) + '°';
+            document.getElementById('rollVal').innerText = gamma.toFixed(1) + '°';
+            document.getElementById('yawVal').innerText = alpha.toFixed(1) + '°';
+
+            // Bars calculation (normalized to 100%)
+            document.getElementById('pitchBar').style.width = ((beta + 90) / 180 * 100) + '%';
+            document.getElementById('rollBar').style.width = ((gamma + 90) / 180 * 100) + '%';
+            document.getElementById('yawBar').style.width = (alpha / 360 * 100) + '%';
+        }
+
+        async function requestPermission() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        initSensors();
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        document.getElementById('permissionBtn').classList.add('hidden');
                     }
-                } catch (err) {
-                    statusMsg.innerText = "Error: " + err.message;
+                } catch (e) {
+                    console.error(e);
                 }
             } else {
-                initSensors();
+                // Non-iOS or older browsers
+                window.addEventListener('deviceorientation', handleOrientation);
+                document.getElementById('permissionBtn').classList.add('hidden');
             }
         }
 
-        function initSensors() {
-            window.addEventListener('deviceorientation', update);
-            startBtn.classList.add('hidden');
-            freezeBtn.classList.remove('hidden');
-            statusMsg.innerText = "System Live - Press Freeze to capture";
+        function handleOrientation(event) {
+            const alpha = event.alpha || 0; // z-axis (yaw)
+            const beta = event.beta || 0;   // x-axis (pitch)
+            const gamma = event.gamma || 0; // y-axis (roll)
+            updateData(alpha, beta, gamma);
         }
 
-        function update(e) {
-            if (isFrozen) return;
+        window.onload = () => {
+            init3D();
             
-            alphaEl.innerText = (e.alpha || 0).toFixed(2);
-            betaEl.innerText = (e.beta || 0).toFixed(2);
-            gammaEl.innerText = (e.gamma || 0).toFixed(2);
-        }
-
-        freezeBtn.addEventListener('click', () => {
-            isFrozen = !isFrozen;
-            if (isFrozen) {
-                freezeBtn.innerText = "Unfreeze / Live";
-                freezeBtn.classList.replace('bg-red-900', 'bg-blue-900');
-                freezeBtn.classList.replace('border-red-500', 'border-blue-500');
-                freezeBtn.classList.replace('text-red-500', 'text-blue-500');
-                cards.forEach(c => c.classList.add('frozen'));
-                statusMsg.innerText = "DATA CAPTURED";
+            // Check if we need to show permission button
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                document.getElementById('permissionBtn').classList.remove('hidden');
+                document.getElementById('permissionBtn').addEventListener('click', requestPermission);
             } else {
-                freezeBtn.innerText = "Freeze Data";
-                freezeBtn.classList.replace('bg-blue-900', 'bg-red-900');
-                freezeBtn.classList.replace('border-blue-500', 'border-red-500');
-                freezeBtn.classList.replace('text-blue-500', 'text-red-500');
-                cards.forEach(c => c.classList.remove('frozen'));
-                statusMsg.innerText = "System Live";
+                // Try to start automatically for standard browsers
+                window.addEventListener('deviceorientation', handleOrientation);
             }
-        });
-
-        startBtn.addEventListener('click', start);
+        };
     </script>
 </body>
 </html>
