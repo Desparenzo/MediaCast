@@ -1,367 +1,251 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LocalCast P2P Streamer</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <title>Sensor Test Lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root {
-            --bg-color: #0f1115;
-            --card-bg: #1a1d24;
-            --primary: #e5a00d; 
-            --text: #f0f0f0;
+        .sensor-card {
+            transition: all 0.3s ease;
         }
-
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color); color: var(--text);
-            overflow: hidden;
+        .active-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-
-        .view {
-            display: none; flex-direction: column; align-items: center;
-            justify-content: center; width: 100%; height: 100%; text-align: center;
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .7; }
         }
-        .view.active { display: flex; }
-
-        h1, h2 { margin-bottom: 20px; font-weight: 300; }
-
-        .focusable {
-            background: var(--card-bg); color: var(--text); border: none;
-            padding: 15px 30px; margin: 10px; font-size: 1.2rem; border-radius: 8px;
-            cursor: pointer; transition: transform 0.2s, background 0.2s;
-            outline: none;
+        canvas {
+            width: 100%;
+            height: 100px;
+            background: #f3f4f6;
+            border-radius: 8px;
         }
-        .focusable:focus {
-            transform: scale(1.05);
-            background: #2a2d35;
-            box-shadow: 0 0 0 4px var(--primary);
-        }
-
-        input[type="text"] {
-            padding: 15px; font-size: 1.5rem; text-align: center;
-            border-radius: 8px; border: none; outline: none; margin-bottom: 20px;
-            width: 200px; background: #2a2d35; color: white; letter-spacing: 5px;
-        }
-
-        .file-list {
-            width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto;
-            display: flex; flex-direction: column; gap: 10px; padding: 20px;
-        }
-        .file-item {
-            display: flex; justify-content: space-between; align-items: center;
-            background: var(--card-bg); padding: 15px 20px; border-radius: 8px;
-            text-align: left;
-        }
-
-        /* --- Loading / Transfer Screen --- */
-        #transfer-bar-container {
-            width: 60%; height: 20px; background: #333; border-radius: 10px;
-            overflow: hidden; margin: 20px 0;
-        }
-        #transfer-progress {
-            width: 0%; height: 100%; background: var(--primary);
-            transition: width 0.1s linear;
-        }
-
-        /* --- Player View --- */
-        #tv-player-view { background: black; position: relative; }
-        video { width: 100%; height: 100%; object-fit: contain; }
-        
-        .player-controls {
-            position: absolute; bottom: 0; left: 0; width: 100%;
-            background: linear-gradient(transparent, rgba(0,0,0,0.9));
-            padding: 40px 20px 20px; display: flex; flex-direction: column;
-            transition: opacity 0.3s; opacity: 1;
-        }
-        .player-controls.hidden { opacity: 0; pointer-events: none; }
-        
-        .controls-row { display: flex; justify-content: center; gap: 20px; margin-top: 15px; }
-        .control-btn {
-            background: transparent; color: white; border: none; font-size: 2rem;
-            padding: 10px 20px; border-radius: 8px; outline: none;
-        }
-        .control-btn:focus { background: rgba(255,255,255,0.2); box-shadow: 0 0 0 3px var(--primary); }
-
-        .progress-bar {
-            width: 90%; height: 8px; background: #333; margin: 0 auto;
-            border-radius: 4px; position: relative; overflow: hidden;
-        }
-        .progress-current { position: absolute; height: 100%; background: var(--primary); width: 0%; left: 0; top: 0; transition: width 0.1s; }
-
-        .loader { border: 4px solid #333; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        #error-msg { color: #ff4c4c; margin-top: 10px; }
     </style>
 </head>
-<body>
+<body class="bg-gray-50 text-gray-900 font-sans min-h-screen">
 
-    <div id="selection-view" class="view active">
-        <h1>Select Device Type</h1>
-        <button class="focusable" onclick="initTVMode()">📺 This is a TV (Firestick)</button>
-        <button class="focusable" onclick="initPhoneMode()">📱 This is a Smartphone</button>
-    </div>
+    <div class="max-w-md mx-auto p-4 pb-20">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-extrabold text-indigo-600">Sensor Lab</h1>
+            <p class="text-gray-500">HTTPS Sensor Diagnostics</p>
+        </header>
 
-    <div id="tv-code-view" class="view">
-        <h2>Open app on Smartphone and enter code:</h2>
-        <h1 id="tv-code" style="font-size: 4rem; letter-spacing: 10px; color: var(--primary);">---</h1>
-        <div class="loader"></div>
-        <p>Waiting for connection...</p>
-    </div>
-
-    <div id="phone-connect-view" class="view">
-        <h2>Enter TV Code</h2>
-        <input type="text" id="join-code" maxlength="6" placeholder="000000">
-        <button class="focusable" onclick="connectToTV()">Connect to TV</button>
-        <div id="error-msg"></div>
-    </div>
-
-    <div id="phone-library-view" class="view">
-        <h2>Connected to TV!</h2>
-        <p>Select media files to share.</p>
-        <input type="file" id="file-input" accept="video/*" multiple style="display:none;">
-        <button class="focusable" onclick="document.getElementById('file-input').click()">📁 Add Videos</button>
-        <div class="file-list" id="phone-file-list"></div>
-        <div id="phone-status-msg" style="margin-top:20px; color: var(--primary);"></div>
-    </div>
-
-    <div id="tv-library-view" class="view">
-        <h2>Shared Library</h2>
-        <div class="file-list" id="tv-file-list">
-            <p>Waiting for files from smartphone...</p>
+        <!-- Permissions/Start Action -->
+        <div id="setup-box" class="bg-indigo-100 p-6 rounded-2xl mb-6 shadow-sm border border-indigo-200">
+            <h2 class="font-bold text-indigo-800 mb-2">Permissions Required</h2>
+            <p class="text-sm text-indigo-700 mb-4">Browsers require a user gesture to access motion and location data. Click below to begin the handshake.</p>
+            <button id="start-btn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-transform">
+                Unlock All Sensors
+            </button>
         </div>
-    </div>
 
-    <!-- New Loading/Transfer View -->
-    <div id="tv-transfer-view" class="view">
-        <h2 id="transfer-filename">Transferring file...</h2>
-        <div id="transfer-bar-container">
-            <div id="transfer-progress"></div>
+        <div id="sensor-list" class="space-y-4 opacity-50 pointer-events-none">
+            
+            <!-- GPS Sensor -->
+            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold text-gray-700 flex items-center">
+                        <span class="mr-2">📍</span> Geolocation (GPS)
+                    </h3>
+                    <span id="gps-status" class="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-400">Idle</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="bg-gray-50 p-2 rounded">Lat: <span id="lat" class="font-mono font-bold">-</span></div>
+                    <div class="bg-gray-50 p-2 rounded">Lon: <span id="lon" class="font-mono font-bold">-</span></div>
+                    <div class="bg-gray-50 p-2 rounded">Acc: <span id="gps-acc" class="font-mono font-bold">-</span>m</div>
+                    <div class="bg-gray-50 p-2 rounded">Alt: <span id="alt" class="font-mono font-bold">-</span>m</div>
+                </div>
+            </div>
+
+            <!-- Accelerometer & Gyro -->
+            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold text-gray-700 flex items-center">
+                        <span class="mr-2">📳</span> Motion & Orientation
+                    </h3>
+                    <span id="motion-status" class="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-400">Waiting</span>
+                </div>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between border-b pb-1">
+                        <span>Alpha (Z):</span> <span id="alpha" class="font-mono font-bold">0°</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-1">
+                        <span>Beta (X):</span> <span id="beta" class="font-mono font-bold">0°</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-1">
+                        <span>Gamma (Y):</span> <span id="gamma" class="font-mono font-bold">0°</span>
+                    </div>
+                    <div class="mt-4">
+                        <p class="text-xs text-gray-400 mb-1 uppercase font-bold tracking-widest">Acceleration (m/s²)</p>
+                        <canvas id="motionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Test -->
+            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold text-gray-700 flex items-center">
+                        <span class="mr-2">📷</span> Camera / Visual
+                    </h3>
+                    <button id="cam-btn" class="text-xs font-bold text-indigo-600 uppercase">Toggle Test</button>
+                </div>
+                <div id="cam-preview-container" class="hidden rounded-lg overflow-hidden bg-black aspect-video relative">
+                    <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
+                </div>
+            </div>
+
+            <!-- Generic Sensors (Modern API) -->
+            <div class="sensor-card bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <h3 class="font-bold text-gray-700 mb-2">Environment (Experimental)</h3>
+                <div class="grid grid-cols-1 gap-2 text-sm">
+                    <div class="flex justify-between bg-gray-50 p-2 rounded">
+                        <span>Ambient Light:</span>
+                        <span id="lux-val" class="font-mono font-bold">Unsupported</span>
+                    </div>
+                    <div class="flex justify-between bg-gray-50 p-2 rounded">
+                        <span>Magnetometer:</span>
+                        <span id="mag-val" class="font-mono font-bold">Unsupported</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
-        <p id="transfer-stats">0% (0MB / 0MB)</p>
-        <button class="focusable" onclick="cancelTransfer()">Cancel</button>
-    </div>
-
-    <div id="tv-player-view" class="view">
-        <video id="video-player" controlslist="nodownload"></video>
-        <div class="player-controls" id="player-controls">
-            <h3 id="now-playing-title" style="margin-left: 5%; margin-bottom: 10px; font-weight: normal; text-align: left;">Title</h3>
-            <div class="progress-bar">
-                <div class="progress-current" id="progress-current"></div>
-            </div>
-            <div class="controls-row">
-                <button class="focusable control-btn" onclick="closePlayer()" id="btn-back">🔙</button>
-                <button class="focusable control-btn" onclick="seekVideo(-10)">⏪</button>
-                <button class="focusable control-btn" onclick="togglePlay()" id="btn-play">⏯️</button>
-                <button class="focusable control-btn" onclick="seekVideo(10)">⏩</button>
-            </div>
+        
+        <div id="message-box" class="fixed bottom-4 left-4 right-4 bg-gray-800 text-white text-xs p-3 rounded-lg shadow-2xl opacity-0 transition-opacity pointer-events-none">
         </div>
     </div>
 
     <script>
-        let peer = null, conn = null, isTV = false;
-        let myFiles = []; 
-        let currentFileId = null, totalFileSize = 0, receivedChunks = [];
-        let nextChunkStart = 0;
-        const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunks for reliability
+        const startBtn = document.getElementById('start-btn');
+        const sensorList = document.getElementById('sensor-list');
+        const msgBox = document.getElementById('message-box');
 
-        const video = document.getElementById('video-player');
-        const progressCurrent = document.getElementById('progress-current');
+        let motionData = [];
+        const canvas = document.getElementById('motionChart');
+        const ctx = canvas.getContext('2d');
 
-        function switchView(viewId) {
-            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-            document.getElementById(viewId).classList.add('active');
-            updateFocusable();
+        function showMsg(text) {
+            msgBox.innerText = text;
+            msgBox.classList.add('opacity-100');
+            setTimeout(() => msgBox.classList.remove('opacity-100'), 3000);
         }
 
-        function updateFocusable() {
-            const activeView = document.querySelector('.view.active');
-            if (!activeView) return;
-            const focusables = Array.from(activeView.querySelectorAll('.focusable'));
-            if (focusables.length > 0) focusables[0].focus();
-        }
+        // Initialize Sensors
+        startBtn.onclick = async () => {
+            startBtn.disabled = true;
+            startBtn.innerText = "Initializing...";
+            
+            try {
+                // 1. Request Device Orientation (iOS 13+ requirement)
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') throw new Error("Motion permission denied");
+                }
 
-        document.addEventListener('keydown', (e) => {
-            if (!isTV) return;
-            const activeView = document.querySelector('.view.active');
-            const focusables = Array.from(activeView.querySelectorAll('.focusable'));
-            let index = focusables.indexOf(document.activeElement);
+                // 2. Start Motion Listening
+                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('devicemotion', handleMotion);
+                document.getElementById('motion-status').innerText = "Streaming";
+                document.getElementById('motion-status').classList.replace('text-gray-400', 'text-green-600');
 
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                index = (index + 1) % focusables.length;
-                if (focusables[index]) focusables[index].focus();
-                showControls();
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                index = (index - 1 + focusables.length) % focusables.length;
-                if (focusables[index]) focusables[index].focus();
-                showControls();
-            } else if (e.key === 'Backspace' || e.key === 'Escape') {
-                if (activeView.id === 'tv-player-view') closePlayer();
+                // 3. Request Geolocation
+                if ("geolocation" in navigator) {
+                    navigator.geolocation.watchPosition(
+                        (pos) => {
+                            document.getElementById('lat').innerText = pos.coords.latitude.toFixed(5);
+                            document.getElementById('lon').innerText = pos.coords.longitude.toFixed(5);
+                            document.getElementById('gps-acc').innerText = pos.coords.accuracy.toFixed(1);
+                            document.getElementById('alt').innerText = pos.coords.altitude ? pos.coords.altitude.toFixed(1) : 'N/A';
+                            document.getElementById('gps-status').innerText = "Active";
+                            document.getElementById('gps-status').classList.replace('text-gray-400', 'text-green-600');
+                        },
+                        (err) => showMsg("GPS Error: " + err.message),
+                        { enableHighAccuracy: true }
+                    );
+                }
+
+                // 4. Try Generic Sensor APIs (Chrome Android mostly)
+                if ('AmbientLightSensor' in window) {
+                    const sensor = new AmbientLightSensor();
+                    sensor.onreading = () => document.getElementById('lux-val').innerText = sensor.illuminance + " lux";
+                    sensor.onerror = (e) => console.warn(e);
+                    sensor.start();
+                }
+                
+                if ('Magnetometer' in window) {
+                    const mag = new Magnetometer();
+                    mag.onreading = () => document.getElementById('mag-val').innerText = `X:${mag.x.toFixed(1)} Y:${mag.y.toFixed(1)}`;
+                    mag.start();
+                }
+
+                // UI Finalize
+                document.getElementById('setup-box').classList.add('hidden');
+                sensorList.classList.remove('opacity-50', 'pointer-events-none');
+                requestAnimationFrame(drawGraph);
+                showMsg("Sensors ready!");
+
+            } catch (err) {
+                showMsg("Init Failed: " + err.message);
+                startBtn.disabled = false;
+                startBtn.innerText = "Try Again";
             }
-        });
+        };
 
-        function initTVMode() {
-            isTV = true;
-            const code = Math.floor(100000 + Math.random() * 900000).toString();
-            document.getElementById('tv-code').innerText = code;
-            peer = new Peer(code);
-            peer.on('open', () => switchView('tv-code-view'));
-            peer.on('connection', c => { 
-                conn = c; 
-                setupTVConnection(); 
-            });
+        function handleOrientation(e) {
+            document.getElementById('alpha').innerText = Math.round(e.alpha) + '°';
+            document.getElementById('beta').innerText = Math.round(e.beta) + '°';
+            document.getElementById('gamma').innerText = Math.round(e.gamma) + '°';
         }
 
-        function initPhoneMode() {
-            isTV = false;
-            peer = new Peer();
-            switchView('phone-connect-view');
+        function handleMotion(e) {
+            const acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            motionData.push(acc.y);
+            if (motionData.length > 100) motionData.shift();
         }
 
-        function connectToTV() {
-            const code = document.getElementById('join-code').value;
-            conn = peer.connect(code, { reliable: true });
-            conn.on('open', () => { 
-                setupPhoneConnection(); 
-                switchView('phone-library-view'); 
-            });
+        function drawGraph() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#6366f1';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const step = canvas.width / 100;
+            for (let i = 0; i < motionData.length; i++) {
+                const x = i * step;
+                const y = (canvas.height / 2) - (motionData[i] * 5);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            requestAnimationFrame(drawGraph);
         }
 
-        function setupPhoneConnection() {
-            document.getElementById('file-input').addEventListener('change', (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(f => myFiles.push(f));
-                document.getElementById('phone-file-list').innerHTML = myFiles.map(f => `<div class="file-item">${f.name}</div>`).join('');
-                conn.send({ type: 'library', files: myFiles.map((f, i) => ({ id: i, name: f.name, size: f.size, type: f.type })) });
-            });
-
-            conn.on('data', data => {
-                if (data.type === 'req') {
-                    const file = myFiles[data.id];
-                    if (!file) return;
-                    
-                    const slice = file.slice(data.start, Math.min(data.start + CHUNK_SIZE, file.size));
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        conn.send({ 
-                            type: 'data', 
-                            id: data.id, 
-                            start: data.start, 
-                            buffer: reader.result 
-                        });
-                    };
-                    reader.readAsArrayBuffer(slice);
-                    document.getElementById('phone-status-msg').innerText = `Sending: ${file.name}...`;
-                }
-            });
-        }
-
-        function setupTVConnection() {
-            switchView('tv-library-view');
-            conn.on('data', data => {
-                if (data.type === 'library') {
-                    const list = document.getElementById('tv-file-list');
-                    list.innerHTML = data.files.map(f => `<button class="focusable file-item" onclick='prepareTransfer(${JSON.stringify(f)})'>🎬 ${f.name}</button>`).join('');
-                    updateFocusable();
-                }
-                if (data.type === 'data') {
-                    // Only accept data for the current transfer
-                    if (data.id !== currentFileId) return;
-
-                    receivedChunks.push(data.buffer);
-                    nextChunkStart += data.buffer.byteLength;
-                    
-                    const progress = (nextChunkStart / totalFileSize) * 100;
-                    document.getElementById('transfer-progress').style.width = progress + '%';
-                    document.getElementById('transfer-stats').innerText = 
-                        `${Math.floor(progress)}% (${(nextChunkStart / 1024 / 1024).toFixed(1)}MB / ${(totalFileSize / 1024 / 1024).toFixed(1)}MB)`;
-                    
-                    if (nextChunkStart < totalFileSize) {
-                        fetchNext();
-                    } else {
-                        finishTransfer();
-                    }
-                }
-            });
-        }
-
-        function prepareTransfer(file) {
-            currentFileId = file.id;
-            totalFileSize = file.size;
-            receivedChunks = [];
-            nextChunkStart = 0;
+        // Camera Toggle
+        let camStream = null;
+        document.getElementById('cam-btn').onclick = async () => {
+            const video = document.getElementById('video');
+            const container = document.getElementById('cam-preview-container');
             
-            document.getElementById('transfer-filename').innerText = `Downloading ${file.name}...`;
-            document.getElementById('transfer-progress').style.width = '0%';
-            document.getElementById('now-playing-title').innerText = file.name;
-            
-            switchView('tv-transfer-view');
-            fetchNext();
-        }
-
-        function finishTransfer() {
-            const fullBlob = new Blob(receivedChunks, { type: 'video/mp4' });
-            video.src = URL.createObjectURL(fullBlob);
-            switchView('tv-player-view');
-            video.play().catch(e => console.log("Auto-play blocked:", e));
-        }
-
-        function fetchNext() {
-            if (currentFileId === null) return;
-            conn.send({ type: 'req', id: currentFileId, start: nextChunkStart });
-        }
-
-        function cancelTransfer() {
-            currentFileId = null;
-            receivedChunks = [];
-            switchView('tv-library-view');
-        }
-
-        function togglePlay() { 
-            if (!video.src) return;
-            if (video.paused) {
-                video.play().catch(e => console.log(e));
+            if (camStream) {
+                camStream.getTracks().forEach(track => track.stop());
+                camStream = null;
+                container.classList.add('hidden');
             } else {
-                video.pause();
-            }
-        }
-
-        function seekVideo(s) { 
-            if (video.src) video.currentTime += s; 
-        }
-        
-        function closePlayer() {
-            video.pause();
-            if (video.src) {
-                URL.revokeObjectURL(video.src);
-                video.src = "";
-            }
-            switchView('tv-library-view');
-        }
-
-        video.addEventListener('timeupdate', () => {
-            if (video.duration) {
-                progressCurrent.style.width = (video.currentTime / video.duration * 100) + '%';
-            }
-        });
-
-        let timeout;
-        function showControls() {
-            document.getElementById('player-controls').classList.remove('hidden');
-            clearTimeout(timeout);
-            timeout = setTimeout(() => { 
-                if(!video.paused && document.activeElement.id !== 'btn-play') {
-                    document.getElementById('player-controls').classList.add('hidden');
+                try {
+                    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    video.srcObject = camStream;
+                    container.classList.remove('hidden');
+                } catch (err) {
+                    showMsg("Camera access denied");
                 }
-            }, 3000);
-        }
-        
-        video.addEventListener('play', () => { document.getElementById('btn-play').innerText = '⏸️'; showControls(); });
-        video.addEventListener('pause', () => { document.getElementById('btn-play').innerText = '⏯️'; showControls(); });
-
+            }
+        };
     </script>
 </body>
 </html>
+
+```
