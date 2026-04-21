@@ -4,134 +4,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smartphone Gyro Diagnostic</title>
+    <title>Multi-Point Gyro Diagnostic</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: system-ui, -apple-system, sans-serif; }
-        canvas { display: block; }
         .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
         .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; }
-        .no-pointer { pointer-events: none; }
-        .yes-pointer { pointer-events: auto; }
-        .btn-glow { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
     </style>
 </head>
 <body class="text-white">
 
-    <!-- Header -->
-    <div class="fixed top-0 left-0 w-full p-4 no-pointer z-20">
-        <header class="flex justify-between items-center yes-pointer">
+    <div class="fixed top-0 left-0 w-full p-4 z-20">
+        <header class="flex justify-between items-center">
             <div>
-                <h1 class="text-lg font-black tracking-tighter text-blue-400 uppercase leading-none">Pro Gyro Sensor</h1>
-                <p id="statusMsg" class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-1">Awaiting Permissions</p>
+                <h1 class="text-lg font-black tracking-tighter text-blue-400 uppercase leading-none">Diagnostic Logger</h1>
+                <p id="statusMsg" class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-1">Ready for Capture</p>
             </div>
-            <div class="flex gap-2">
-                <button id="permissionBtn" class="bg-blue-600 px-4 py-2 rounded-full text-xs font-bold shadow-lg btn-glow">START SENSORS</button>
-                <button id="calibrateBtn" class="bg-slate-800 border border-slate-600 px-4 py-2 rounded-full text-xs font-bold hidden">CALIBRATE (ZERO)</button>
-            </div>
+            <button id="permissionBtn" class="bg-blue-600 px-4 py-2 rounded-full text-xs font-bold shadow-lg">START SENSORS</button>
         </header>
     </div>
 
-    <!-- Test Guidance Overlay -->
-    <div id="testBox" class="fixed top-1/4 left-1/2 -translate-x-1/2 w-80 glass p-6 rounded-3xl z-30 text-center hidden pointer-events-auto">
-        <h2 class="text-blue-400 font-bold uppercase text-[10px] tracking-widest mb-2">Orientation Test</h2>
-        <p id="instruction" class="text-base font-medium leading-tight mb-4">Hold phone flat on your palm and tap Calibrate.</p>
-        <div class="flex gap-2">
-            <button id="prevBtn" class="flex-1 bg-slate-700 py-2 rounded-xl text-[10px] font-bold uppercase">Back</button>
-            <button id="nextBtn" class="flex-[2] bg-blue-600 py-2 rounded-xl text-[10px] font-bold uppercase">Next Step</button>
-        </div>
+    <!-- Diagnostic Step Overlay -->
+    <div id="diagBox" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 glass p-6 rounded-3xl z-30 text-center hidden">
+        <div id="stepCounter" class="text-blue-400 font-bold uppercase text-[10px] tracking-widest mb-2">Step 1 of 6</div>
+        <p id="instruction" class="text-base font-medium leading-tight mb-6">Lay phone flat on a table (Screen Facing Up).</p>
+        <button id="captureBtn" class="w-full bg-blue-600 py-3 rounded-xl text-sm font-bold uppercase shadow-xl mb-3">Capture Position Data</button>
+        <p id="rawPreview" class="text-[10px] text-slate-400 mono">A: 0 | B: 0 | G: 0</p>
     </div>
 
-    <div id="canvas-container" class="fixed inset-0"></div>
-
-    <!-- Dashboard -->
-    <div class="fixed bottom-0 left-0 w-full p-4 no-pointer z-10">
-        <div class="max-w-4xl mx-auto grid grid-cols-3 gap-2 yes-pointer">
-            <div class="glass p-3 rounded-xl border-b-2 border-blue-500">
-                <div class="text-[9px] font-black text-blue-400 uppercase mb-1">Pitch (β)</div>
-                <span id="pitchVal" class="text-xl font-black mono">0.0°</span>
-            </div>
-            <div class="glass p-3 rounded-xl border-b-2 border-emerald-500">
-                <div class="text-[9px] font-black text-emerald-400 uppercase mb-1">Roll (γ)</div>
-                <span id="rollVal" class="text-xl font-black mono">0.0°</span>
-            </div>
-            <div class="glass p-3 rounded-xl border-b-2 border-amber-500">
-                <div class="text-[9px] font-black text-amber-400 uppercase mb-1">Yaw (α)</div>
-                <span id="yawVal" class="text-xl font-black mono">0.0°</span>
-            </div>
-        </div>
+    <!-- Result Display -->
+    <div id="resultBox" class="fixed inset-4 glass p-6 rounded-3xl z-40 hidden flex flex-col">
+        <h2 class="text-xl font-bold text-blue-400 mb-2">Diagnostic Data Ready</h2>
+        <p class="text-xs text-slate-400 mb-4">Copy the text below and paste it in our chat:</p>
+        <textarea id="resultText" class="flex-1 bg-black/50 p-4 rounded-xl font-mono text-[10px] text-emerald-400 border border-white/10 resize-none mb-4" readonly></textarea>
+        <button id="copyBtn" class="bg-white text-black py-3 rounded-xl font-bold uppercase">Copy to Clipboard</button>
     </div>
+
+    <div id="canvas-container" class="fixed inset-0 opacity-50"></div>
 
     <script>
         let scene, camera, renderer, phoneGroup;
         let sensorActive = false;
-        let offset = { alpha: 0, beta: 0, gamma: 0 };
-        let raw = { alpha: 0, beta: 0, gamma: 0 };
-
+        let currentRaw = { a: 0, b: 0, g: 0 };
+        let capturedData = [];
+        
         const steps = [
-            { text: "1. Hold phone FLAT on your palm (Screen Up). Tap Calibrate.", target: { p:0, r:0, y:0 } },
-            { text: "2. Tilt phone 90° UP (Stand it upright like you're reading).", target: { p:90, r:0, y:0 } },
-            { text: "3. Tilt phone 90° DOWN (Point charging port at ceiling).", target: { p:-90, r:0, y:0 } },
-            { text: "4. Roll phone 90° LEFT (Landscape mode, left side down).", target: { p:0, r:-90, y:0 } },
-            { text: "5. Roll phone 90° RIGHT (Landscape mode, right side down).", target: { p:0, r:90, y:0 } },
-            { text: "6. Turn around 180° (Spin phone like a compass).", target: { p:0, r:0, y:180 } }
+            "1. Phone FLAT on table (Screen UP).",
+            "2. Phone STANDING upright (Portrait mode).",
+            "3. Phone UPSIDE DOWN (Standing on its top edge).",
+            "4. Phone on LEFT SIDE (Landscape, volume buttons down).",
+            "5. Phone on RIGHT SIDE (Landscape, power button down).",
+            "6. Phone SCREEN DOWN (Flat on table face down)."
         ];
-        let currentStep = 0;
+        let currentStepIdx = 0;
 
-        function createSmartphone() {
+        function createSimplePhone() {
             const group = new THREE.Group();
-
-            // Main Body (Chassis)
-            const bodyGeom = new THREE.BoxGeometry(2.4, 4.8, 0.25);
-            const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1e293b, shininess: 100 });
-            const body = new THREE.Mesh(bodyGeom, bodyMat);
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(2.4, 4.8, 0.3),
+                new THREE.MeshPhongMaterial({ color: 0x334155 })
+            );
             group.add(body);
-
-            // Screen (Front)
-            const screenGeom = new THREE.PlaneGeometry(2.25, 4.65);
-            const screenCanvas = document.createElement('canvas');
-            screenCanvas.width = 256; screenCanvas.height = 512;
-            const ctx = screenCanvas.getContext('2d');
-            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 256, 512);
-            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, 246, 502);
-            ctx.fillStyle = '#3b82f6'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('SCREEN', 128, 256);
-            ctx.font = '20px sans-serif'; ctx.fillText('TOP ▲', 128, 50);
-            
-            const screenMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(screenCanvas) });
-            const screen = new THREE.Mesh(screenGeom, screenMat);
-            screen.position.z = 0.13;
+            const screen = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.2, 4.6),
+                new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+            );
+            screen.position.z = 0.16;
             group.add(screen);
-
-            // Camera Array (Back)
-            const camGroup = new THREE.Group();
-            const camBump = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.05), new THREE.MeshPhongMaterial({color: 0x0f172a}));
-            camBump.position.set(-0.6, 1.8, -0.13);
-            
-            const lensGeom = new THREE.CircleGeometry(0.15, 32);
-            const lensMat = new THREE.MeshPhongMaterial({ color: 0x222, shininess: 200 });
-            const lens1 = new THREE.Mesh(lensGeom, lensMat);
-            lens1.position.set(-0.6, 1.95, -0.16);
-            lens1.rotation.y = Math.PI;
-            
-            const lens2 = new THREE.Mesh(lensGeom, lensMat);
-            lens2.position.set(-0.6, 1.65, -0.16);
-            lens2.rotation.y = Math.PI;
-
-            group.add(camBump);
-            group.add(lens1);
-            group.add(lens2);
-
-            // Side Buttons (Power/Volume)
-            const powerBtn = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.1), new THREE.MeshPhongMaterial({color: 0x475569}));
-            powerBtn.position.set(1.22, 0.5, 0);
-            group.add(powerBtn);
-
-            const volBtn = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.1), new THREE.MeshPhongMaterial({color: 0x475569}));
-            volBtn.position.set(-1.22, 0.8, 0);
-            group.add(volBtn);
-
             return group;
         }
 
@@ -140,102 +80,81 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            phoneGroup = createSmartphone();
+            phoneGroup = createSimplePhone();
             scene.add(phoneGroup);
-
-            // Lighting
-            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-            const light = new THREE.PointLight(0xffffff, 1);
-            light.position.set(5, 10, 10);
-            scene.add(light);
-
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
             camera.position.set(0, 0, 10);
-            camera.lookAt(0, 0, 0);
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
-            renderLoop();
-        }
-
-        function renderLoop() {
-            requestAnimationFrame(renderLoop);
-            if (!sensorActive) { 
-                phoneGroup.rotation.y += 0.01;
-                phoneGroup.rotation.x = Math.sin(Date.now() * 0.001) * 0.2;
-            }
-            renderer.render(scene, camera);
-        }
-
-        function handleCalibration() {
-            offset = { ...raw };
-            document.getElementById('statusMsg').innerText = "CALIBRATED @ " + new Date().toLocaleTimeString();
-            if (currentStep === 0) {
-                currentStep++;
-            }
-            updateTestUI();
-        }
-
-        function updateTestUI() {
-            const box = document.getElementById('testBox');
-            const instr = document.getElementById('instruction');
-            box.classList.remove('hidden');
-            instr.innerText = steps[currentStep].text;
-        }
-
-        function updateOrientation(a, b, g) {
-            sensorActive = true;
-            raw = { alpha: a, beta: b, gamma: g };
-
-            // Relative calculations
-            let cA = (a - offset.alpha);
-            let cB = (b - offset.beta);
-            let cG = (g - offset.gamma);
-
-            const rad = Math.PI / 180;
             
-            // SWAPPED FIX: We flip the sign of the Roll (Gamma) calculation
-            // to correct for the inverted behavior observed in steps 4 & 5.
-            phoneGroup.rotation.set(cB * rad, cA * rad, cG * rad, 'YXZ');
-
-            document.getElementById('pitchVal').innerText = cB.toFixed(1) + '°';
-            document.getElementById('rollVal').innerText = cG.toFixed(1) + '°';
-            document.getElementById('yawVal').innerText = ((cA + 360) % 360).toFixed(1) + '°';
+            function animate() {
+                requestAnimationFrame(animate);
+                if (!sensorActive) phoneGroup.rotation.y += 0.01;
+                renderer.render(scene, camera);
+            }
+            animate();
         }
 
-        async function requestPermission() {
+        async function start() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const res = await DeviceOrientationEvent.requestPermission();
-                if (res === 'granted') start();
-            } else { start(); }
+                if (res !== 'granted') return;
+            }
+            
+            window.addEventListener('deviceorientation', (e) => {
+                sensorActive = true;
+                currentRaw = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0 };
+                document.getElementById('rawPreview').innerText = 
+                    `A: ${currentRaw.a.toFixed(1)} | B: ${currentRaw.b.toFixed(1)} | G: ${currentRaw.g.toFixed(1)}`;
+                
+                // Visual feedback (uncalibrated)
+                const rad = Math.PI / 180;
+                phoneGroup.rotation.set(currentRaw.b * rad, currentRaw.a * rad, currentRaw.g * rad, 'YXZ');
+            });
+
+            document.getElementById('permissionBtn').classList.add('hidden');
+            document.getElementById('diagBox').classList.remove('hidden');
         }
 
-        function start() {
-            window.addEventListener('deviceorientation', (e) => {
-                if (e.alpha !== null) updateOrientation(e.alpha, e.beta, e.gamma);
+        function captureCurrentStep() {
+            capturedData.push({
+                step: steps[currentStepIdx],
+                data: { ...currentRaw }
             });
-            document.getElementById('permissionBtn').classList.add('hidden');
-            document.getElementById('calibrateBtn').classList.remove('hidden');
-            document.getElementById('statusMsg').innerText = "SENSORS CONNECTED";
-            updateTestUI();
+
+            currentStepIdx++;
+            if (currentStepIdx < steps.length) {
+                document.getElementById('stepCounter').innerText = `Step ${currentStepIdx + 1} of 6`;
+                document.getElementById('instruction').innerText = steps[currentStepIdx];
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById('diagBox').classList.add('hidden');
+            document.getElementById('resultBox').classList.remove('hidden');
+            
+            const resultStr = capturedData.map(d => 
+                `${d.step}\nRAW: Alpha=${d.data.a.toFixed(2)}, Beta=${d.data.b.toFixed(2)}, Gamma=${d.data.g.toFixed(2)}`
+            ).join('\n\n');
+            
+            document.getElementById('resultText').value = resultStr;
         }
 
         window.onload = () => {
             init3D();
-            document.getElementById('permissionBtn').onclick = requestPermission;
-            document.getElementById('calibrateBtn').onclick = handleCalibration;
-            document.getElementById('nextBtn').onclick = () => {
-                currentStep = (currentStep + 1) % steps.length;
-                updateTestUI();
-            };
-            document.getElementById('prevBtn').onclick = () => {
-                currentStep = (currentStep - 1 + steps.length) % steps.length;
-                updateTestUI();
+            document.getElementById('permissionBtn').onclick = start;
+            document.getElementById('captureBtn').onclick = captureCurrentStep;
+            document.getElementById('copyBtn').onclick = () => {
+                const text = document.getElementById('resultText').value;
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                document.getElementById('copyBtn').innerText = "COPIED!";
             };
         };
     </script>
