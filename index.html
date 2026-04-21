@@ -23,24 +23,36 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .mono { font-family: 'ui-monospace', 'SFMono-Regular', monospace; }
-        
-        /* Ensure the UI doesn't interfere with the 3D interaction */
         .no-pointer { pointer-events: none; }
         .yes-pointer { pointer-events: auto; }
+        
+        .btn-pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
     </style>
 </head>
 <body class="text-white">
 
-    <!-- Top Branding -->
+    <!-- Top Branding & Controls -->
     <div class="fixed top-0 left-0 w-full p-6 no-pointer z-10">
         <header class="flex justify-between items-center yes-pointer">
             <div>
-                <h1 class="text-xl font-black tracking-tighter text-blue-400 uppercase">Cube Gyro Labs</h1>
-                <p class="text-slate-500 text-[10px] font-bold tracking-widest uppercase">Visual Calibration v2.0</p>
+                <h1 class="text-xl font-black tracking-tighter text-blue-400 uppercase leading-none">Cube Gyro Labs</h1>
+                <p class="text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-1">Calibrated Reference System</p>
             </div>
-            <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-full text-xs font-bold transition-all shadow-xl hidden">
-                START SENSORS
-            </button>
+            <div class="flex gap-3">
+                <button id="calibrateBtn" class="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-full text-xs font-bold transition-all border border-slate-600 shadow-xl hidden">
+                    CALIBRATE (ZERO)
+                </button>
+                <button id="permissionBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-full text-xs font-bold transition-all shadow-xl btn-pulse hidden">
+                    START SENSORS
+                </button>
+            </div>
         </header>
     </div>
 
@@ -79,45 +91,66 @@
             </div>
 
         </div>
+        <p class="text-center text-[9px] text-slate-500 uppercase font-bold tracking-widest mt-4 no-pointer">Hold phone upright and tap calibrate for 0° reference</p>
     </div>
 
     <script>
-        let scene, camera, renderer, cube, axesHelper;
+        let scene, camera, renderer, cube, compass;
         let sensorActive = false;
+        
+        // Calibration Offsets
+        let offset = { alpha: 0, beta: 0, gamma: 0 };
+        let raw = { alpha: 0, beta: 0, gamma: 0 };
 
         function createFaceTexture(number, color, label) {
             const canvas = document.createElement('canvas');
             canvas.width = 512;
             canvas.height = 512;
             const ctx = canvas.getContext('2d');
-
             ctx.fillStyle = color;
             ctx.fillRect(0, 0, 512, 512);
-
             ctx.strokeStyle = 'rgba(255,255,255,0.5)';
             ctx.lineWidth = 20;
             ctx.strokeRect(10, 10, 492, 492);
-
             ctx.fillStyle = 'white';
             ctx.font = 'bold 350px monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(number, 256, 256);
-
             ctx.font = 'bold 40px sans-serif';
             ctx.fillText(label, 256, 460);
-
             const texture = new THREE.CanvasTexture(canvas);
-            return new THREE.MeshPhongMaterial({ 
-                map: texture, 
-                shininess: 60,
-                specular: 0x444444
-            });
+            return new THREE.MeshPhongMaterial({ map: texture, shininess: 60 });
+        }
+
+        function createCompass() {
+            const group = new THREE.Group();
+            
+            // Outer ring
+            const ringGeom = new THREE.RingGeometry(4.5, 4.7, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x334155, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+
+            // Degree marks
+            for (let i = 0; i < 360; i += 30) {
+                const markGeom = new THREE.BoxGeometry(0.1, 0.1, 0.5);
+                const markMat = new THREE.MeshBasicMaterial({ color: i === 0 ? 0xff0000 : 0x64748b });
+                const mark = new THREE.Mesh(markGeom, markMat);
+                
+                const angle = i * (Math.PI / 180);
+                mark.position.x = Math.sin(angle) * 5.2;
+                mark.position.z = -Math.cos(angle) * 5.2;
+                mark.rotation.y = -angle;
+                group.add(mark);
+            }
+
+            return group;
         }
 
         function init3D() {
             scene = new THREE.Scene();
-            // Background gradient simulation
             scene.fog = new THREE.FogExp2(0x0f172a, 0.05);
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -127,37 +160,31 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            const geometry = new THREE.BoxGeometry(3.2, 3.2, 3.2);
-            
+            // The Cube
+            const geometry = new THREE.BoxGeometry(3, 3, 3);
             const materials = [
-                createFaceTexture('1', '#3b82f6', 'RIGHT (+X)'), 
-                createFaceTexture('2', '#ef4444', 'LEFT (-X)'),
-                createFaceTexture('3', '#10b981', 'TOP (+Y)'),
-                createFaceTexture('4', '#f59e0b', 'BOTTOM (-Y)'),
-                createFaceTexture('5', '#8b5cf6', 'FRONT (+Z)'),
-                createFaceTexture('6', '#ec4899', 'BACK (-Z)')
+                createFaceTexture('1', '#3b82f6', 'RIGHT'), 
+                createFaceTexture('2', '#ef4444', 'LEFT'),
+                createFaceTexture('3', '#10b981', 'TOP'),
+                createFaceTexture('4', '#f59e0b', 'BOTTOM'),
+                createFaceTexture('5', '#8b5cf6', 'FRONT'),
+                createFaceTexture('6', '#ec4899', 'BACK')
             ];
-
             cube = new THREE.Mesh(geometry, materials);
             scene.add(cube);
 
-            // Subtle glow edges
-            const edges = new THREE.EdgesGeometry(geometry);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
-            cube.add(line);
+            // Compass panning ring
+            compass = createCompass();
+            scene.add(compass);
 
-            axesHelper = new THREE.AxesHelper(5);
-            scene.add(axesHelper);
-
+            // Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
-
-            const spotLight = new THREE.SpotLight(0xffffff, 0.8);
+            const spotLight = new THREE.SpotLight(0xffffff, 0.9);
             spotLight.position.set(10, 20, 10);
             scene.add(spotLight);
 
-            // Centered camera position for better mobile viewing
-            camera.position.set(6, 4, 10);
+            camera.position.set(0, 8, 12);
             camera.lookAt(0, 0, 0);
 
             window.addEventListener('resize', onWindowResize, false);
@@ -172,43 +199,61 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            
             if (!sensorActive) {
-                // Auto-drift when no sensor
                 cube.rotation.y += 0.004;
-                cube.rotation.x += 0.002;
+                compass.rotation.y -= 0.002;
             }
-            
             renderer.render(scene, camera);
         }
 
-        function updateOrientation(alpha, beta, gamma) {
+        function handleCalibration() {
+            // Set current raw values as the reference zero
+            offset.alpha = raw.alpha;
+            offset.beta = raw.beta;
+            offset.gamma = raw.gamma;
+            
+            const btn = document.getElementById('calibrateBtn');
+            btn.innerText = "CALIBRATED!";
+            btn.classList.replace('bg-slate-800', 'bg-green-600');
+            setTimeout(() => {
+                btn.innerText = "CALIBRATE (ZERO)";
+                btn.classList.replace('bg-green-600', 'bg-slate-800');
+            }, 1000);
+        }
+
+        function updateOrientation(a, b, g) {
             sensorActive = true;
+            raw = { alpha: a, beta: b, gamma: g };
+
+            // Calculate values relative to calibration offset
+            let calAlpha = (a - offset.alpha);
+            let calBeta = (b - offset.beta);
+            let calGamma = (g - offset.gamma);
+
             const degToRad = Math.PI / 180;
             
-            // Standard DeviceOrientation Euler Order
+            // Rotate cube using calibrated values
             cube.rotation.set(
-                beta * degToRad,
-                alpha * degToRad,
-                -gamma * degToRad,
+                calBeta * degToRad,
+                calAlpha * degToRad,
+                -calGamma * degToRad,
                 'ZXY'
             );
 
-            document.getElementById('pitchVal').innerText = beta.toFixed(1) + '°';
-            document.getElementById('rollVal').innerText = gamma.toFixed(1) + '°';
-            document.getElementById('yawVal').innerText = alpha.toFixed(1) + '°';
+            // Rotate compass ring to show panning
+            compass.rotation.y = -calAlpha * degToRad;
+
+            document.getElementById('pitchVal').innerText = calBeta.toFixed(1) + '°';
+            document.getElementById('rollVal').innerText = calGamma.toFixed(1) + '°';
+            document.getElementById('yawVal').innerText = ((calAlpha + 360) % 360).toFixed(1) + '°';
         }
 
         async function requestPermission() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const response = await DeviceOrientationEvent.requestPermission();
-                    if (response === 'granted') {
-                        startListening();
-                    }
-                } catch (e) {
-                    console.error(e);
-                }
+                    if (response === 'granted') startListening();
+                } catch (e) { console.error(e); }
             } else {
                 startListening();
             }
@@ -216,15 +261,15 @@
 
         function startListening() {
             window.addEventListener('deviceorientation', (e) => {
-                if (e.alpha !== null) {
-                    updateOrientation(e.alpha, e.beta, e.gamma);
-                }
+                if (e.alpha !== null) updateOrientation(e.alpha, e.beta, e.gamma);
             });
             document.getElementById('permissionBtn').classList.add('hidden');
+            document.getElementById('calibrateBtn').classList.remove('hidden');
         }
 
         window.onload = () => {
             init3D();
+            document.getElementById('calibrateBtn').addEventListener('click', handleCalibration);
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 document.getElementById('permissionBtn').classList.remove('hidden');
                 document.getElementById('permissionBtn').addEventListener('click', requestPermission);
