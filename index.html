@@ -4,253 +4,264 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Global Compass | গ্লোবাল কম্পাস</title>
+    <title>AR Viewfinder Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&family=Hind+Siliguri:wght@300;500;700&display=swap');
-        
-        body {
-            font-family: 'Inter', 'Hind Siliguri', sans-serif;
-            background-color: #000;
-            color: #fff;
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1.5rem 1rem;
-        }
-
-        .bn-text {
-            font-size: 0.85em;
-            opacity: 0.8;
-            display: block;
-            font-weight: 400;
-        }
-
-        .compass-container {
-            position: relative;
-            width: 280px;
-            height: 280px;
-            transition: transform 0.1s ease-out;
-        }
-
-        .compass-ring {
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            border-radius: 50%;
-            border: 2px solid #222;
-            position: relative;
-            background: radial-gradient(circle, #0a0a0a 0%, #000 100%);
+            pointer-events: none;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
-        }
-
-        .direction {
-            position: absolute;
-            text-align: center;
-            line-height: 1;
-        }
-
-        .dir-n { top: 15px; color: #ff4d4d; font-weight: 700; font-size: 1.4rem; }
-        .dir-s { bottom: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
-        .dir-e { right: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
-        .dir-w { left: 15px; color: #fff; font-weight: 500; font-size: 1.2rem; }
-
-        .needle {
-            position: absolute;
-            width: 2px;
-            height: 120px;
-            background: linear-gradient(to bottom, #ff4d4d 50%, #444 50%);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
             z-index: 10;
         }
-
-        .center-dot {
+        .pointer-events-auto { pointer-events: auto; }
+        .hud-border {
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        #video-preview {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: 90px;
+            border: 2px solid #22c55e;
+            border-radius: 8px;
+            object-fit: cover;
+            transform: scaleX(-1);
+            background: #111;
+        }
+        .scan-line {
             position: absolute;
-            width: 8px;
-            height: 8px;
-            background: #fff;
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 11;
-            box-shadow: 0 0 10px rgba(255,255,255,0.5);
-        }
-
-        .info-card {
-            background: rgba(20, 20, 20, 0.8);
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 12px;
             width: 100%;
-            max-width: 360px;
-            text-align: center;
+            height: 2px;
+            background: #22c55e;
+            box-shadow: 0 0 15px #22c55e;
+            top: 0;
+            animation: scan 3s linear infinite;
+            display: none;
         }
-
-        .glow-text {
-            text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        @keyframes scan {
+            from { top: 0%; }
+            to { top: 100%; }
         }
     </style>
 </head>
 <body>
 
-    <!-- Clock & Weather -->
-    <div class="info-card">
-        <div id="clock-container" class="mb-1">
-            <div id="clock" class="text-3xl font-bold tracking-tighter glow-text text-blue-400">00:00:00</div>
-            <div id="clock-bn" class="text-xs text-blue-900 font-medium">০০:০০:০০</div>
-        </div>
-        <div id="weather" class="text-sm mt-1 text-gray-400">
-            <span>Loading Weather...</span>
-            <span class="bn-text">আবহাওয়া লোড হচ্ছে...</span>
-        </div>
-    </div>
-
-    <!-- GPS Coordinates -->
-    <div class="info-card">
-        <div class="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-1">GPS Location | জিপিএস অবস্থান</div>
-        <div id="coords" class="font-mono text-xs text-green-500">
-            LAT: -- | LON: --
-        </div>
-        <div id="coords-bn" class="font-mono text-[10px] text-green-800">
-            অক্ষাংশ: -- | দ্রাঘিমাংশ: --
-        </div>
-    </div>
-
-    <!-- Compass -->
-    <div class="flex flex-col items-center">
-        <div id="heading-container" class="text-center mb-6">
-            <h2 id="heading-en" class="text-2xl font-bold text-white uppercase tracking-widest">NORTH</h2>
-            <h3 id="heading-bn" class="text-lg text-red-500 font-medium">উত্তর</h3>
-        </div>
-
-        <div class="compass-container" id="compass">
-            <div class="compass-ring">
-                <div class="direction dir-n">N<span class="bn-text !text-[10px]">উ</span></div>
-                <div class="direction dir-e" style="transform: rotate(90deg) translate(0, -110px) rotate(-90deg);">E<span class="bn-text !text-[10px]">পূ</span></div>
-                <div class="direction dir-s" style="transform: rotate(180deg) translate(0, -110px) rotate(-180deg);">S<span class="bn-text !text-[10px]">দ</span></div>
-                <div class="direction dir-w" style="transform: rotate(270deg) translate(0, -110px) rotate(-270deg);">W<span class="bn-text !text-[10px]">প</span></div>
-                
-                <!-- Inter-cardinal small markers -->
-                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(45deg) translate(0, -110px) rotate(-45deg);">NE</div>
-                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(135deg) translate(0, -110px) rotate(-135deg);">SE</div>
-                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(225deg) translate(0, -110px) rotate(-225deg);">SW</div>
-                <div class="text-[9px] text-gray-600 absolute" style="transform: rotate(315deg) translate(0, -110px) rotate(-315deg);">NW</div>
-
-                <div class="needle"></div>
-                <div class="center-dot"></div>
+    <div id="ui-overlay">
+        <div class="flex justify-between items-start">
+            <div class="text-green-500 bg-black/50 p-2 hud-border rounded">
+                <div class="text-xs">ALTITUDE: 1.78M</div>
+                <div id="gyro-data" class="text-[10px]">GYRO: WAITING...</div>
+            </div>
+            <div class="text-green-500 bg-black/50 p-2 hud-border rounded text-right">
+                <div class="text-xs">SYSTEM: ACTIVE</div>
+                <div class="text-[10px]">SCANNER v1.0.4</div>
             </div>
         </div>
-        
-        <div class="mt-6 text-center">
-            <div id="degree-val" class="text-4xl font-light text-yellow-500 tracking-tighter">0°</div>
-            <div id="degree-bn" class="bn-text text-yellow-800">০° ডিগ্রি</div>
+
+        <div class="flex flex-col items-center gap-4 mb-8">
+            <div id="status-msg" class="text-green-500 text-xs animate-pulse">STANDBY - ALIGN SENSORS</div>
+            <button id="scan-btn" class="pointer-events-auto w-20 h-20 rounded-full border-4 border-green-500 flex items-center justify-center bg-green-500/10 active:bg-green-500/40 transition-colors">
+                <div class="w-16 h-16 rounded-full border-2 border-green-500"></div>
+            </button>
         </div>
     </div>
 
-    <!-- Status / Permission -->
-    <div id="status-area" class="w-full text-center p-2">
-        <button id="start-btn" class="bg-white text-black text-xs font-bold px-6 py-3 rounded-full uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-white/10">
-            Start Sensors | সেন্সর চালু করুন
-        </button>
-    </div>
+    <video id="video-preview" autoplay playsinline muted></video>
+    <div id="scan-line" class="scan-line"></div>
+    <canvas id="hidden-canvas" style="display:none;"></canvas>
 
     <script>
-        const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-        const toBn = (n) => n.toString().replace(/\d/g, d => bnDigits[d]);
+        let scene, camera, renderer, points, grid;
+        let video = document.getElementById('video-preview');
+        let scanBtn = document.getElementById('scan-btn');
+        let statusMsg = document.getElementById('status-msg');
+        let scanLine = document.getElementById('scan-line');
+        let gyroDisplay = document.getElementById('gyro-data');
+        
+        const PLAYER_HEIGHT = 1.78; // 5'10" in meters
+        let currentRotation = { alpha: 0, beta: 0, gamma: 0 };
+        let pointsGroup = new THREE.Group();
 
-        function updateClock() {
-            const now = new Date();
-            // 24-hour format: HH:mm:ss
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            
-            const timeStr = `${hours}:${minutes}:${seconds}`;
-            document.getElementById('clock').textContent = timeStr;
-            document.getElementById('clock-bn').textContent = toBn(timeStr);
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Position camera at 5'10" height
+            camera.position.set(0, PLAYER_HEIGHT, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Create initial empty floor dots
+            const gridCount = 40;
+            const gridSpacing = 1;
+            const gridGeometry = new THREE.BufferGeometry();
+            const gridPositions = [];
+            for(let x = -gridCount; x <= gridCount; x++) {
+                for(let z = -gridCount; z <= gridCount; z++) {
+                    gridPositions.push(x * gridSpacing, 0, z * gridSpacing);
+                }
+            }
+            gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPositions, 3));
+            const gridMaterial = new THREE.PointsMaterial({ color: 0x004400, size: 0.05 });
+            grid = new THREE.Points(gridGeometry, gridMaterial);
+            scene.add(grid);
+            scene.add(pointsGroup);
+
+            window.addEventListener('resize', onWindowResize, false);
+            setupCamera();
+            setupGyro();
+            animate();
         }
-        setInterval(updateClock, 1000);
-        updateClock();
 
-        async function fetchWeather(lat, lon) {
+        async function setupCamera() {
             try {
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-                const data = await res.json();
-                const temp = Math.round(data.current_weather.temperature);
-                document.getElementById('weather').innerHTML = `
-                    <span>${temp}°C Current Temperature</span>
-                    <span class="bn-text">তাপমাত্রা: ${toBn(temp)}° সেলসিয়াস</span>
-                `;
-            } catch (e) {
-                document.getElementById('weather').textContent = "Weather Error | আবহাওয়া ত্রুটি";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                statusMsg.innerText = "CAMERA ACCESS DENIED";
+                console.error(err);
             }
         }
 
-        const directions = [
-            { en: "NORTH", bn: "উত্তর" },
-            { en: "NORTH-EAST", bn: "উত্তর-পূর্ব" },
-            { en: "EAST", bn: "পূর্ব" },
-            { en: "SOUTH-EAST", bn: "দক্ষিণ-পূর্ব" },
-            { en: "SOUTH", bn: "দক্ষিণ" },
-            { en: "SOUTH-WEST", bn: "দক্ষিণ-পশ্চিম" },
-            { en: "WEST", bn: "পশ্চিম" },
-            { en: "NORTH-WEST", bn: "উত্তর-পশ্চিম" }
-        ];
-
-        function getDir(deg) {
-            const index = Math.round(deg / 45) % 8;
-            return directions[index];
+        function setupGyro() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                scanBtn.addEventListener('click', async () => {
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                        }
+                    } catch (e) { console.error(e); }
+                }, { once: true });
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
         }
 
         function handleOrientation(event) {
-            let heading = event.webkitCompassHeading || (360 - event.alpha);
-            if (heading === undefined) return;
+            // Alpha: rotation around z-axis
+            // Beta: front back motion
+            // Gamma: left right motion
+            currentRotation.alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+            currentRotation.beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+            currentRotation.gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
 
-            const deg = Math.round(heading);
-            document.getElementById('compass').style.transform = `rotate(${-deg}deg)`;
-            document.getElementById('degree-val').textContent = `${deg}°`;
-            document.getElementById('degree-bn').textContent = `${toBn(deg)}° ডিগ্রি`;
+            gyroDisplay.innerText = `GYRO: A:${Math.round(event.alpha)} B:${Math.round(event.beta)} G:${Math.round(event.gamma)}`;
+        }
+
+        function captureEnvironment() {
+            statusMsg.innerText = "SCANNING ENVIRONMENT...";
+            scanLine.style.display = 'block';
             
-            const dirNames = getDir(deg);
-            document.getElementById('heading-en').textContent = dirNames.en;
-            document.getElementById('heading-bn').textContent = dirNames.bn;
-        }
+            const canvas = document.getElementById('hidden-canvas');
+            const ctx = canvas.getContext('2d');
+            const w = 80; // Lower res for performance
+            const h = 60;
+            canvas.width = w;
+            canvas.height = h;
+            
+            ctx.drawImage(video, 0, 0, w, h);
+            const imageData = ctx.getImageData(0, 0, w, h).data;
+            
+            // Clear previous points
+            while(pointsGroup.children.length > 0) pointsGroup.remove(pointsGroup.children[0]);
 
-        function init() {
-            // Location
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(pos => {
-                    const lat = pos.coords.latitude.toFixed(4);
-                    const lon = pos.coords.longitude.toFixed(4);
-                    document.getElementById('coords').textContent = `LAT: ${lat} | LON: ${lon}`;
-                    document.getElementById('coords-bn').textContent = `অক্ষাংশ: ${toBn(lat)} | দ্রাঘিমাংশ: ${toBn(lon)}`;
-                    fetchWeather(lat, lon);
-                });
-            }
+            const positions = [];
+            const colors = [];
 
-            // Compass Logic
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(state => {
-                    if (state === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
-                        document.getElementById('status-area').style.display = 'none';
+            // Project pixels into 3D space based on camera direction
+            const vector = new THREE.Vector3();
+            camera.getWorldDirection(vector);
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4;
+                    const r = imageData[idx];
+                    const g = imageData[idx + 1];
+                    const b = imageData[idx + 2];
+                    const brightness = (r + g + b) / 3;
+
+                    if (brightness > 40) { // Threshold to capture "objects"
+                        // Map pixels to a sphere/frustum in front of player
+                        const phi = (y / h - 0.5) * Math.PI * 0.5;
+                        const theta = (x / w - 0.5) * Math.PI * 0.5;
+                        const dist = 2 + (255 - brightness) / 50; // Brighter is closer
+
+                        const px = Math.sin(theta) * dist;
+                        const py = PLAYER_HEIGHT + Math.sin(-phi) * dist;
+                        const pz = -Math.cos(theta) * dist;
+
+                        positions.push(px, py, pz);
                     }
-                });
-            } else {
-                window.addEventListener('deviceorientation', handleOrientation);
-                document.getElementById('status-area').style.display = 'none';
+                }
             }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({ 
+                color: 0x22c55e, 
+                size: 0.03,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const newPoints = new THREE.Points(geometry, material);
+            
+            // Align points group to current camera orientation so they stay "fixed" in space
+            pointsGroup.quaternion.copy(camera.quaternion);
+            pointsGroup.position.copy(camera.position);
+            pointsGroup.add(newPoints);
+
+            setTimeout(() => {
+                scanLine.style.display = 'none';
+                statusMsg.innerText = "SCAN COMPLETE - DATA STORED";
+            }, 1000);
         }
 
-        document.getElementById('start-btn').addEventListener('click', init);
+        scanBtn.addEventListener('click', captureEnvironment);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Apply Gyro to Camera
+            // Simple mapping - alpha is compass/yaw, beta is pitch
+            if (currentRotation) {
+                camera.rotation.set(
+                    currentRotation.beta + Math.PI/2, // Offset for holding phone upright
+                    -currentRotation.gamma,
+                    currentRotation.alpha,
+                    'YXZ'
+                );
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
     </script>
 </body>
 </html>
