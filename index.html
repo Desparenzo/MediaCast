@@ -4,177 +4,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gravity Sync + Log</title>
+    <title>Fused Gravity Lab</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: radial-gradient(circle at center, #0f172a, #020617); font-family: sans-serif; touch-action: none; color: white; }
-        .glass { backdrop-filter: blur(12px); background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); }
-        .neon-border { border: 1px solid rgba(59, 130, 246, 0.5); box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
+        body { margin: 0; overflow: hidden; background: #000; font-family: system-ui, sans-serif; touch-action: none; color: white; }
+        .glass { backdrop-filter: blur(20px); background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(59, 130, 246, 0.3); }
+        .metal-btn { background: linear-gradient(180deg, #334155 0%, #0f172a 100%); border: 1px solid #475569; }
+        .metal-btn:active { background: #1e293b; transform: scale(0.98); }
+        #log-scroll::-webkit-scrollbar { width: 4px; }
+        #log-scroll::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <!-- Setup Phase -->
-    <div id="setupScreen" class="fixed inset-0 z-50 flex items-center justify-center p-8 text-center bg-slate-950">
-        <div class="max-w-sm">
-            <div class="w-16 h-16 bg-blue-600 rounded-full mx-auto mb-6 flex items-center justify-center animate-pulse">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m0 11v1m-7-7H4m11 0h1m-7.071-7.071l.707.707M17 17l.707.707M6.343 17.657l-.707-.707M17.657 6.343l-.707-.707" />
-                </svg>
+    <!-- Intro / Permissions -->
+    <div id="intro" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 p-8 text-center">
+        <div class="max-w-xs">
+            <div class="mb-6 relative inline-block">
+                <div class="w-24 h-24 border-4 border-blue-500 rounded-full animate-spin border-t-transparent"></div>
+                <div class="absolute inset-0 flex items-center justify-center font-black text-blue-500">GYRO</div>
             </div>
-            <h1 class="text-3xl font-black mb-2 tracking-tighter italic">POSITION LOCK</h1>
-            <p class="text-slate-400 text-sm mb-8">Hold your phone upright in your natural "active" position and tap below.</p>
-            <button id="lockBtn" class="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-3xl font-black text-xl uppercase shadow-2xl transition-all">Lock Reference</button>
+            <h1 class="text-3xl font-black mb-4 tracking-tighter uppercase">Fusion Calibration</h1>
+            <p class="text-slate-400 text-sm mb-10 leading-relaxed">Hold phone upright. We will sync Gyro, Accelerometer, and Compass simultaneously.</p>
+            <button id="startBtn" class="w-full bg-blue-600 py-6 rounded-2xl font-black text-xl shadow-[0_0_30px_rgba(37,99,235,0.4)]">INITIALIZE SENSORS</button>
         </div>
     </div>
 
-    <!-- Active Tuning Phase -->
-    <div id="tunerUI" class="fixed inset-0 z-40 hidden flex flex-col justify-between p-6 pointer-events-none">
-        <!-- Top HUD -->
-        <div class="glass p-5 rounded-[2rem] text-center pointer-events-auto neon-border">
-            <div class="text-[10px] font-bold text-blue-400 uppercase tracking-[0.3em] mb-1">Gravity Mode</div>
-            <div class="text-3xl font-black italic" id="modeDisplay">1 / 6</div>
-            <p class="text-[11px] text-slate-500 mt-2">Tilt phone. The white marble should fall toward the ground.</p>
+    <!-- Main Workspace -->
+    <div id="workspace" class="fixed inset-0 z-10 hidden flex flex-col justify-between p-6 pointer-events-none">
+        <div class="glass p-4 rounded-3xl pointer-events-auto flex justify-between items-center">
+            <div>
+                <p class="text-[10px] font-black text-blue-500 uppercase">System Status</p>
+                <h2 class="text-lg font-black italic tracking-tighter">FUSED-LINK ACTIVE</h2>
+            </div>
+            <div class="text-right">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Gravity Error</p>
+                <div id="errVal" class="text-xs font-mono text-emerald-400">0.00%</div>
+            </div>
         </div>
 
-        <!-- Bottom Controls -->
         <div class="flex flex-col gap-3 pointer-events-auto">
-            <div class="flex gap-3">
-                <button id="cycleBtn" class="flex-1 bg-slate-800 py-5 rounded-2xl font-bold uppercase text-xs border border-white/10">Wrong Direction?</button>
-                <button id="doneBtn" class="flex-1 bg-blue-600 py-5 rounded-2xl font-black uppercase text-xs shadow-lg">It's Perfect</button>
-            </div>
+            <button id="fixBtn" class="metal-btn w-full py-5 rounded-2xl font-black text-blue-400 uppercase text-sm flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Wrong Direction? Fix Now
+            </button>
+            <button id="exportBtn" class="bg-white text-black w-full py-5 rounded-2xl font-black uppercase text-sm shadow-xl">Complete & Log Data</button>
         </div>
     </div>
 
-    <!-- Final Log Modal -->
-    <div id="logModal" class="fixed inset-0 z-[60] glass flex items-center justify-center p-6 hidden">
-        <div class="bg-slate-900 w-full max-w-lg rounded-[2.5rem] p-8 border border-blue-500/30">
-            <h2 class="text-2xl font-black text-blue-400 mb-2 italic">SYNC COMPLETE</h2>
-            <p class="text-xs text-slate-400 mb-4 font-medium">This is the unique gravity profile for your device. Copy and send this to me.</p>
-            <textarea id="logData" class="w-full h-64 bg-black/50 p-4 rounded-2xl font-mono text-[10px] text-emerald-400 border border-white/10 mb-6" readonly></textarea>
-            <button id="copyBtn" class="w-full bg-white text-black py-5 rounded-2xl font-black uppercase shadow-lg">Copy Data</button>
+    <!-- Log Modal -->
+    <div id="logModal" class="fixed inset-0 z-[60] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 hidden">
+        <div class="w-full max-w-lg bg-slate-900 rounded-[2.5rem] p-8 border border-white/10 shadow-2xl">
+            <h2 class="text-2xl font-black text-white mb-2">CALIBRATION DUMP</h2>
+            <p class="text-xs text-slate-500 mb-6 uppercase tracking-widest font-bold">Fused Sensor Output</p>
+            <textarea id="logText" class="w-full h-80 bg-black p-4 rounded-2xl font-mono text-[10px] text-blue-400 border border-white/5 mb-6" readonly></textarea>
+            <button id="copyBtn" class="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase">Copy to Clipboard</button>
         </div>
     </div>
 
-    <div id="canvas-container" class="fixed inset-0 z-10"></div>
+    <div id="canvas-container" class="fixed inset-0 z-0"></div>
 
     <script>
-        let scene, camera, renderer, marble, container;
-        let ref = { a: 0, b: 0, g: 0 };
-        let cur = { a: 0, b: 0, g: 0 };
-        let mode = 0;
-        let isActive = false;
+        let scene, camera, renderer, ball, outerSphere;
+        let sensorData = { alpha:0, beta:0, gamma:0, accX:0, accY:0, accZ:0, mag:0 };
+        let offset = { x: 0, y: 0 };
+        let velocity = { x: 0, y: 0 };
+        let history = [];
 
         function init3D() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            // Large Bowl
-            const bowlGeom = new THREE.SphereGeometry(3.5, 32, 32);
-            container = new THREE.Mesh(bowlGeom, new THREE.MeshPhongMaterial({ 
-                color: 0x3b82f6, transparent: true, opacity: 0.1, wireframe: true 
-            }));
-            scene.add(container);
+            // 360 Environment Sphere (Smaller to fit)
+            const envGeom = new THREE.SphereGeometry(4, 32, 32);
+            const envMat = new THREE.MeshStandardMaterial({ 
+                color: 0x1e293b, wireframe: true, transparent: true, opacity: 0.2 
+            });
+            outerSphere = new THREE.Mesh(envGeom, envMat);
+            scene.add(outerSphere);
 
-            // Marble
-            marble = new THREE.Mesh(
-                new THREE.SphereGeometry(0.5, 32, 32),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.4 })
-            );
-            scene.add(marble);
+            // Heavy Metallic Ball
+            const ballGeom = new THREE.SphereGeometry(0.6, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, metalness: 1.0, roughness: 0.1, emissive: 0x334155, emissiveIntensity: 0.2
+            });
+            ball = new THREE.Mesh(ballGeom, ballMat);
+            scene.add(ball);
 
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(5, 5, 5);
-            scene.add(light);
+            // Lights
+            const p1 = new THREE.PointLight(0x3b82f6, 2, 50); p1.position.set(5, 5, 5); scene.add(p1);
+            const p2 = new THREE.PointLight(0xffffff, 1, 50); p2.position.set(-5, -5, 5); scene.add(p2);
             scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
             camera.position.z = 10;
 
             function animate() {
                 requestAnimationFrame(animate);
-                if (isActive) {
-                    // Logic: Difference from reference
-                    let db = cur.b - ref.b; // Pitch delta
-                    let dg = cur.g - ref.g; // Roll delta
-                    
-                    let targetX = 0, targetY = 0;
-                    const force = 0.08;
+                
+                // Physics constants for "Heavy" ball
+                const gravityScale = 0.025;
+                const friction = 0.95;
+                
+                // Calculate pull using Gyro + Offsets
+                let targetX = (sensorData.gamma + offset.x) * (Math.PI / 180);
+                let targetY = (sensorData.beta + offset.y) * (Math.PI / 180);
 
-                    // 6 Modes of Gravity Mapping
-                    switch(mode) {
-                        case 0: targetX = dg;  targetY = -db; break;
-                        case 1: targetX = -dg; targetY = db;  break;
-                        case 2: targetX = db;  targetY = dg;  break;
-                        case 3: targetX = -db; targetY = -dg; break;
-                        case 4: targetX = dg;  targetY = db;  break;
-                        case 5: targetX = -dg; targetY = -db; break;
-                    }
+                velocity.x += targetX * gravityScale;
+                velocity.y -= targetY * gravityScale;
+                
+                velocity.x *= friction;
+                velocity.y *= friction;
 
-                    // Apply constraints to keep marble in the bowl
-                    const tx = THREE.MathUtils.clamp(targetX * force, -3, 3);
-                    const ty = THREE.MathUtils.clamp(targetY * force, -3, 3);
-                    
-                    marble.position.x += (tx - marble.position.x) * 0.1;
-                    marble.position.y += (ty - marble.position.y) * 0.1;
-                    
-                    // Add subtle rotation to container for feel
-                    container.rotation.y += 0.005;
+                ball.position.x += velocity.x;
+                ball.position.y += velocity.y;
+
+                // Circular Constraint (3.4 radius = outer 4.0 - ball 0.6)
+                const d = Math.sqrt(ball.position.x**2 + ball.position.y**2);
+                if (d > 3.4) {
+                    const angle = Math.atan2(ball.position.y, ball.position.x);
+                    ball.position.x = Math.cos(angle) * 3.4;
+                    ball.position.y = Math.sin(angle) * 3.4;
+                    velocity.x *= -0.3; // Heavy thud bounce
+                    velocity.y *= -0.3;
                 }
+
+                // Visual Error display (Calculated by Acc vs Gyro deviation)
+                const error = Math.abs(sensorData.accX - targetX * 10) + Math.abs(sensorData.accY - targetY * 10);
+                document.getElementById('errVal').innerText = (error * 5).toFixed(2) + "%";
+
                 renderer.render(scene, camera);
             }
             animate();
         }
 
-        async function start() {
+        async function startSensors() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const res = await DeviceOrientationEvent.requestPermission();
                 if (res !== 'granted') return;
             }
+
+            // Orientation Listener
             window.addEventListener('deviceorientation', (e) => {
-                cur = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0 };
+                sensorData.alpha = e.alpha || 0;
+                sensorData.beta = e.beta || 0;
+                sensorData.gamma = e.gamma || 0;
             });
 
-            // Delay for sensor stability
-            setTimeout(() => {
-                ref = { ...cur };
-                isActive = true;
-                document.getElementById('setupScreen').classList.add('hidden');
-                document.getElementById('tunerUI').classList.remove('hidden');
-            }, 200);
+            // Accelerometer Listener (Real-time Gravity)
+            window.addEventListener('devicemotion', (e) => {
+                sensorData.accX = e.accelerationIncludingGravity.x || 0;
+                sensorData.accY = e.accelerationIncludingGravity.y || 0;
+                sensorData.accZ = e.accelerationIncludingGravity.z || 0;
+            });
+
+            document.getElementById('intro').classList.add('hidden');
+            document.getElementById('workspace').classList.remove('hidden');
         }
 
-        document.getElementById('lockBtn').onclick = start;
-        
-        document.getElementById('cycleBtn').onclick = () => {
-            mode = (mode + 1) % 6;
-            document.getElementById('modeDisplay').innerText = `${mode + 1} / 6`;
-            marble.position.set(0, 0, 0);
+        // FUSION RE-ALIGNMENT
+        // Uses the Accelerometer's absolute gravity vector to recalibrate the Gyro
+        document.getElementById('fixBtn').onclick = () => {
+            // Acc reports where Earth actually is
+            // Gamma is horizontal tilt, Beta is vertical tilt
+            // We adjust offsets so that Current Sensor + Offset = Acc Vector
+            offset.x = -(sensorData.gamma + (sensorData.accX * 9));
+            offset.y = -(sensorData.beta - (sensorData.accY * 9));
+            
+            // Log the correction for debugging
+            history.push({
+                type: "CORRECTION",
+                acc: {x: sensorData.accX, y: sensorData.accY},
+                gyro: {b: sensorData.beta, g: sensorData.gamma},
+                newOffset: {...offset}
+            });
+
+            // Flash the UI
+            const btn = document.getElementById('fixBtn');
+            btn.innerText = "ALIGNED!";
+            setTimeout(() => btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Wrong Direction? Fix Now`, 1000);
         };
 
-        document.getElementById('doneBtn').onclick = () => {
-            const result = {
-                device: navigator.userAgent,
-                selectedMode: mode + 1,
-                referenceLock: ref,
-                finalSensors: cur,
-                timestamp: new Date().toISOString()
+        document.getElementById('exportBtn').onclick = () => {
+            const dump = {
+                finalOffset: offset,
+                lastSensorState: sensorData,
+                correctionCount: history.length,
+                history: history,
+                ua: navigator.userAgent
             };
-            document.getElementById('tunerUI').classList.add('hidden');
+            document.getElementById('logText').value = JSON.stringify(dump, null, 2);
             document.getElementById('logModal').classList.remove('hidden');
-            document.getElementById('logData').value = JSON.stringify(result, null, 2);
         };
 
         document.getElementById('copyBtn').onclick = () => {
-            document.getElementById('logData').select();
+            document.getElementById('logText').select();
             document.execCommand('copy');
-            document.getElementById('copyBtn').innerText = "COPIED TO CLIPBOARD";
+            document.getElementById('copyBtn').innerText = "COPIED!";
         };
 
         window.onload = init3D;
+        document.getElementById('startBtn').onclick = startSensors;
     </script>
 </body>
 </html>
