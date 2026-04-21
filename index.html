@@ -4,153 +4,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gyro Calibration Tool - Portrait Fix</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>Raw Sensor Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', monospace; touch-action: none; }
-        canvas { display: block; }
-        #ui {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+        body { 
+            margin: 0; 
+            background-color: #000; 
+            color: #0f0; 
+            font-family: 'Courier New', monospace; 
+            touch-action: none;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .data-card {
+            border: 1px solid #0f0;
+            background: rgba(0, 20, 0, 0.5);
             padding: 20px;
+            margin: 10px;
+            border-radius: 8px;
         }
-        .overlay-btn {
-            pointer-events: auto; padding: 15px 35px;
-            background: rgba(0, 255, 0, 0.1); border: 2px solid #0f0;
-            color: #0f0; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
-            box-shadow: 0 0 20px rgba(0,255,0,0.2);
+        .val {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #0f0;
         }
-        #data-panel {
-            pointer-events: auto;
-            width: 100%; max-width: 320px;
-            background: rgba(0, 10, 0, 0.95); border: 1px solid #0f0;
-            color: #0f0; font-size: 13px; padding: 15px; border-radius: 8px;
+        .label {
+            font-size: 0.8rem;
+            color: #0f0;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
-        .val { font-size: 20px; font-weight: bold; color: #fff; margin-bottom: 8px; }
-        .axis-label { color: #0f0; opacity: 0.7; font-size: 10px; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <div id="data-panel">
-            <div class="axis-label">Alpha (Z - Compass/Yaw)</div>
-            <div id="val-alpha" class="val">0.00°</div>
-            <div class="axis-label">Beta (X - Pitch/Tilt)</div>
-            <div id="val-beta" class="val">0.00°</div>
-            <div class="axis-label">Gamma (Y - Roll/Steer)</div>
-            <div id="val-gamma" class="val">0.00°</div>
-            <hr style="border: 0; border-top: 1px solid #030; margin: 10px 0;">
-            <div style="font-size: 10px; color: #0f0;">PORTRAIT MODE STABILIZED</div>
+    <div class="flex-1 flex flex-col justify-center p-4">
+        <div class="data-card">
+            <div class="label">Alpha (Z-Axis / Compass)</div>
+            <div id="alpha" class="val">0.00</div>
         </div>
 
-        <button id="start-btn" class="overlay-btn">Sync Upright Position</button>
+        <div class="data-card">
+            <div class="label">Beta (X-Axis / Pitch)</div>
+            <div id="beta" class="val">0.00</div>
+        </div>
+
+        <div class="data-card">
+            <div class="label">Gamma (Y-Axis / Roll)</div>
+            <div id="gamma" class="val">0.00</div>
+        </div>
+    </div>
+
+    <div class="p-6 text-center">
+        <button id="start" class="bg-green-900 border-2 border-green-400 text-green-400 px-8 py-4 rounded-full font-bold uppercase tracking-widest active:bg-green-400 active:text-black">
+            Initialize Sensors
+        </button>
     </div>
 
     <script>
-        let scene, camera, renderer, phoneProxy;
-        let sensorData = { alpha: 0, beta: 0, gamma: 0 };
+        const alphaEl = document.getElementById('alpha');
+        const betaEl = document.getElementById('beta');
+        const gammaEl = document.getElementById('gamma');
+        const startBtn = document.getElementById('start');
 
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 0, 7);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
-
-            // Phone Body (Slab)
-            const geometry = new THREE.BoxGeometry(2.5, 5, 0.3);
-            const material = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100 });
-            phoneProxy = new THREE.Mesh(geometry, material);
-            
-            // Screen (Green Face)
-            const screenGeom = new THREE.PlaneGeometry(2.3, 4.8);
-            const screenMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
-            const screen = new THREE.Mesh(screenGeom, screenMat);
-            screen.position.z = 0.16;
-            phoneProxy.add(screen);
-
-            // Top Camera Bump (Red)
-            const topGeom = new THREE.BoxGeometry(1.0, 0.2, 0.31);
-            const topMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            const top = new THREE.Mesh(topGeom, topMat);
-            top.position.y = 2.4;
-            phoneProxy.add(top);
-            
-            scene.add(phoneProxy);
-
-            // World Grid
-            const grid = new THREE.GridHelper(15, 15, 0x004400, 0x002200);
-            grid.rotation.x = Math.PI / 2;
-            scene.add(grid);
-
-            const light = new THREE.PointLight(0xffffff, 1.2);
-            light.position.set(5, 5, 10);
-            scene.add(light);
-            scene.add(new THREE.AmbientLight(0x333333));
-
-            document.getElementById('start-btn').addEventListener('click', startSensors);
-            window.addEventListener('resize', onResize);
-            animate();
-        }
-
-        async function startSensors() {
+        async function start() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                const response = await DeviceOrientationEvent.requestPermission();
-                if (response === 'granted') {
-                    window.addEventListener('deviceorientation', handleOrientation, true);
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', update);
+                        startBtn.style.display = 'none';
+                    }
+                } catch (err) {
+                    console.error(err);
                 }
             } else {
-                window.addEventListener('deviceorientation', handleOrientation, true);
+                window.addEventListener('deviceorientation', update);
+                startBtn.style.display = 'none';
             }
-            document.getElementById('start-btn').style.display = 'none';
         }
 
-        function handleOrientation(event) {
-            sensorData.alpha = event.alpha || 0;
-            sensorData.beta = event.beta || 0;
-            sensorData.gamma = event.gamma || 0;
-
-            document.getElementById('val-alpha').innerText = sensorData.alpha.toFixed(2) + '°';
-            document.getElementById('val-beta').innerText = sensorData.beta.toFixed(2) + '°';
-            document.getElementById('val-gamma').innerText = sensorData.gamma.toFixed(2) + '°';
+        function update(e) {
+            // Using toFixed(2) for high precision data gathering
+            alphaEl.innerText = (e.alpha || 0).toFixed(2);
+            betaEl.innerText = (e.beta || 0).toFixed(2);
+            gammaEl.innerText = (e.gamma || 0).toFixed(2);
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Convert to Radians
-            const a = THREE.MathUtils.degToRad(sensorData.alpha);
-            const b = THREE.MathUtils.degToRad(sensorData.beta);
-            const g = THREE.MathUtils.degToRad(sensorData.gamma);
-
-            // FIX: THE PORTRAIT ORIENTATION MAPPING
-            // We use a different Euler sequence to account for the phone standing up.
-            // When standing, Z (alpha) is yaw, X (beta) is pitch, Y (gamma) is roll.
-            // But the browser reports these relative to the phone lying FLAT.
-            const euler = new THREE.Euler(b, a, -g, 'YXZ');
-            phoneProxy.quaternion.setFromEuler(euler);
-
-            // THE CRITICAL "STAND UP" TRANSFORM:
-            // We rotate the base orientation so that the model's "Vertical" (Portrait) 
-            // alignment matches the browser's 90-degree Beta reading.
-            const standUpOffset = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-            phoneProxy.quaternion.premultiply(standUpOffset);
-
-            renderer.render(scene, camera);
-        }
-
-        function onResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        init();
+        startBtn.addEventListener('click', start);
     </script>
 </body>
 </html>
