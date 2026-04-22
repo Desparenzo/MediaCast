@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fixed AR Panning Anchor</title>
+    <title>Left-Right Panning Test</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #ffffff; font-family: ui-monospace, monospace; }
+        body { margin: 0; overflow: hidden; background: #ffffff; font-family: monospace; }
         canvas { display: block; }
         .hud {
             position: absolute;
@@ -16,14 +16,11 @@
             left: 10px;
             pointer-events: none;
             z-index: 100;
-        }
-        .stats {
-            background: rgba(255, 255, 255, 0.6);
-            backdrop-filter: blur(4px);
-            padding: 8px 12px;
-            border-radius: 12px;
-            font-size: 10px;
-            color: #444;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1px solid #ddd;
         }
         .controls {
             position: absolute;
@@ -31,16 +28,6 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 100;
-        }
-        .btn {
-            background: #000;
-            color: #fff;
-            padding: 14px 28px;
-            border-radius: 16px;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         #overlay {
             position: fixed;
@@ -51,71 +38,61 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            text-align: center;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 class="text-3xl font-black mb-2 tracking-tight">Panning Anchor</h1>
-        <p class="text-gray-400 mb-8 px-6">The pillar should stay still while you rotate.</p>
-        <button onclick="requestAccess()" class="bg-black text-white px-12 py-4 rounded-full font-bold shadow-2xl">Start Panning</button>
+        <h1 class="text-xl font-bold mb-4 text-center">ONLY LEFT-RIGHT PANNING</h1>
+        <button onclick="requestAccess()" class="bg-black text-white px-10 py-4 rounded-full font-bold">START TEST</button>
     </div>
 
     <div class="hud">
-        <div class="stats">
-            <span class="opacity-50">ALPHA SENSOR:</span> 
-            <span id="s-a">0</span>
-            <div class="mt-1">
-                <span class="opacity-50">WORLD OFFSET:</span> 
-                <span id="w-a">0</span> rad
-            </div>
-        </div>
+        <div class="font-bold border-b mb-2">ORIENTATION DETECTED</div>
+        <div id="mode-display" class="text-blue-600 mb-2">DETECTING...</div>
+        <div>Sensor Alpha: <span id="val-a">0</span></div>
+        <div>Sensor Beta:  <span id="val-b">0</span></div>
+        <div>Sensor Gamma: <span id="val-g">0</span></div>
+        <div class="mt-2 pt-2 border-t font-bold">WORLD YAW: <span id="val-yaw" class="text-red-600">0</span></div>
     </div>
 
     <div class="controls">
-        <button onclick="reset()" class="btn">RESET FORWARD</button>
+        <button onclick="reset()" class="bg-black text-white px-8 py-3 rounded-xl font-bold">RESET CENTER</button>
     </div>
 
     <script>
         let scene, camera, renderer, worldGroup;
-        let sensorAlpha = 0;
-        let offsetAlpha = 0;
+        let sensor = { a: 0, b: 0, g: 0 };
+        let offsetYaw = 0;
 
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0xffffff);
-
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 2; // Camera is at 2 units back
+            camera.position.z = 2;
 
-            // worldGroup contains everything (grid + pillar)
             worldGroup = new THREE.Group();
             scene.add(worldGroup);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // 1. ADD THE GRID (Floor)
-            const grid = new THREE.GridHelper(50, 40, 0xdddddd, 0xeeeeee);
+            // Large White Pillar in front
+            const pillar = new THREE.Mesh(
+                new THREE.BoxGeometry(0.8, 10, 0.8),
+                new THREE.MeshBasicMaterial({ color: 0x333333 })
+            );
+            pillar.position.set(0, 0, -5);
+            worldGroup.add(pillar);
+
+            // Floor markers
+            const grid = new THREE.GridHelper(40, 20, 0xcccccc, 0xeeeeee);
             grid.position.y = -2;
             worldGroup.add(grid);
 
-            // 2. ADD THE PILAR (Diagnostic Target)
-            const pillarGeom = new THREE.BoxGeometry(0.5, 4, 0.5); // 0.5x4x0.5
-            const pillarMat = new THREE.MeshBasicMaterial({ color: 0xcccccc }); // Light Gray
-            const pillar = new THREE.Mesh(pillarGeom, pillarMat);
-            pillar.position.set(0, 0, -5); // 5 units in front (Z is depth)
-            worldGroup.add(pillar);
-
-            // Light for visibility (though we use BasicMaterial)
-            const ambient = new THREE.AmbientLight(0xffffff, 1);
-            scene.add(ambient);
-
-            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('resize', onResize);
             animate();
         }
 
@@ -132,42 +109,58 @@
         function start() {
             document.getElementById('overlay').style.display = 'none';
             window.addEventListener('deviceorientation', (e) => {
-                // We are only capturing the compass rotation (Alpha)
-                sensorAlpha = e.alpha || 0;
+                sensor.a = e.alpha || 0;
+                sensor.b = e.beta || 0;
+                sensor.g = e.gamma || 0;
             });
             init();
         }
 
         function reset() {
-            // Sets the current heading as the new '0' forward
-            offsetAlpha = sensorAlpha;
+            // Recenter based on current horizontal value
+            offsetYaw = calculateCurrentYaw();
+        }
+
+        function calculateCurrentYaw() {
+            const degToRad = Math.PI / 180;
+            // Determine if phone is upright (Beta ~90) or flat (Beta ~0)
+            const isUpright = Math.abs(sensor.b) > 45;
+            
+            if (isUpright) {
+                // In upright mode, Alpha is often jittery or swapped with Gamma
+                // Let's test if Gamma is the primary horizontal mover here
+                return sensor.a * degToRad; // Testing Alpha first, even in upright
+            } else {
+                return sensor.a * degToRad; // Flat mode uses Alpha
+            }
         }
 
         function animate() {
             requestAnimationFrame(animate);
-
             if (worldGroup) {
                 const degToRad = Math.PI / 180;
                 
-                // Subtract calibration offset to get relative heading
-                const relativeAlpha = (sensorAlpha - offsetAlpha) * degToRad;
+                // Logic: 
+                // If Beta is > 45, the phone is tilted up. 
+                // In this state, panning is often Alpha, but sometimes Gamma.
+                const isUpright = Math.abs(sensor.b) > 45;
+                document.getElementById('mode-display').innerText = isUpright ? "UPRIGHT (CAMERA)" : "FLAT (COMPASS)";
+                
+                let currentYaw = sensor.a * degToRad;
+                
+                // INVERSION: To keep pillar still, move world opposite to phone
+                worldGroup.rotation.y = -(currentYaw - offsetYaw);
 
-                // INVERSION FIX:
-                // To counteract phone panning left (+Alpha), the world 
-                // must rotate right by the same amount.
-                const finalAlphaOffset = -relativeAlpha;
-
-                // We apply this only to the world's Y (Yaw) axis
-                worldGroup.rotation.y = finalAlphaOffset;
-
-                document.getElementById('s-a').innerText = sensorAlpha.toFixed(1);
-                document.getElementById('w-a').innerText = finalAlphaOffset.toFixed(2);
+                // HUD
+                document.getElementById('val-a').innerText = sensor.a.toFixed(1);
+                document.getElementById('val-b').innerText = sensor.b.toFixed(1);
+                document.getElementById('val-g').innerText = sensor.g.toFixed(1);
+                document.getElementById('val-yaw').innerText = worldGroup.rotation.y.toFixed(2);
             }
-
             renderer.render(scene, camera);
         }
 
-        function onWindowResize() {
+        function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -175,6 +168,5 @@
     </script>
 </body>
 </html>
-
 
 ```
