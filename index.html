@@ -4,158 +4,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Left-Right Panning Test</title>
+    <title>Google Photos Logic Test</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #ffffff; font-family: monospace; }
-        canvas { display: block; }
-        .hud {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            pointer-events: none;
-            z-index: 100;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 12px;
-            border: 1px solid #ddd;
-        }
-        .controls {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-        }
-        #overlay {
-            position: fixed;
-            inset: 0;
-            background: white;
-            z-index: 200;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        .ui { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+        .glass { background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); color: white; padding: 15px; border-radius: 20px; pointer-events: auto; }
     </style>
 </head>
 <body>
 
-    <div id="overlay">
-        <h1 class="text-xl font-bold mb-4 text-center">ONLY LEFT-RIGHT PANNING</h1>
-        <button onclick="requestAccess()" class="bg-black text-white px-10 py-4 rounded-full font-bold">START TEST</button>
+    <div id="setup" class="fixed inset-0 bg-white z-[1000] flex items-center justify-center p-10 text-center">
+        <div>
+            <h1 class="text-3xl font-bold mb-4">Sensor Fusion</h1>
+            <p class="mb-8 text-gray-500 text-sm">Mimicking Google's 360 viewer logic using Vector Projection.</p>
+            <button onclick="init()" class="bg-blue-600 text-white px-10 py-4 rounded-full font-bold">Start Tracking</button>
+        </div>
     </div>
 
-    <div class="hud">
-        <div class="font-bold border-b mb-2">ORIENTATION DETECTED</div>
-        <div id="mode-display" class="text-blue-600 mb-2">DETECTING...</div>
-        <div>Sensor Alpha: <span id="val-a">0</span></div>
-        <div>Sensor Beta:  <span id="val-b">0</span></div>
-        <div>Sensor Gamma: <span id="val-g">0</span></div>
-        <div class="mt-2 pt-2 border-t font-bold">WORLD YAW: <span id="val-yaw" class="text-red-600">0</span></div>
-    </div>
-
-    <div class="controls">
-        <button onclick="reset()" class="bg-black text-white px-8 py-3 rounded-xl font-bold">RESET CENTER</button>
+    <div class="ui">
+        <div class="flex justify-between items-start">
+            <div class="glass text-[10px] uppercase tracking-tighter opacity-80">
+                <div id="orient-label">Detecting Position...</div>
+                <div class="mt-1 font-mono">Yaw: <span id="yaw-val">0</span>°</div>
+            </div>
+        </div>
+        
+        <div class="flex justify-center">
+            <button onclick="resetYaw()" class="glass px-8 py-4 font-bold border border-white/20">RESET CENTER</button>
+        </div>
     </div>
 
     <script>
-        let scene, camera, renderer, worldGroup;
-        let sensor = { a: 0, b: 0, g: 0 };
-        let offsetYaw = 0;
+        let scene, camera, renderer, world;
+        let deviceQ = new THREE.Quaternion();
+        let worldOffset = 0;
+        let isStarted = false;
 
         function init() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(response => {
+                    if (response == 'granted') setup();
+                });
+            } else {
+                setup();
+            }
+        }
+
+        function setup() {
+            document.getElementById('setup').style.display = 'none';
+            
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xffffff);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 2;
-
-            worldGroup = new THREE.Group();
-            scene.add(worldGroup);
-
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Large White Pillar in front
+            world = new THREE.Group();
+            scene.add(world);
+
+            // Create the "360 Environment"
+            // Pillar at North
             const pillar = new THREE.Mesh(
-                new THREE.BoxGeometry(0.8, 10, 0.8),
-                new THREE.MeshBasicMaterial({ color: 0x333333 })
+                new THREE.BoxGeometry(0.5, 6, 0.5),
+                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
             );
-            pillar.position.set(0, 0, -5);
-            worldGroup.add(pillar);
+            pillar.position.set(0, 0, -8);
+            world.add(pillar);
 
-            // Floor markers
-            const grid = new THREE.GridHelper(40, 20, 0xcccccc, 0xeeeeee);
-            grid.position.y = -2;
-            worldGroup.add(grid);
+            // Helpers
+            const grid = new THREE.GridHelper(100, 40, 0x333333, 0x222222);
+            grid.position.y = -3;
+            world.add(grid);
 
+            window.addEventListener('deviceorientation', handleOrientation);
             window.addEventListener('resize', onResize);
+            isStarted = true;
             animate();
         }
 
-        function requestAccess() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(res => {
-                    if (res === 'granted') start();
-                });
-            } else {
-                start();
-            }
+        function handleOrientation(e) {
+            const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0;
+            const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;
+            const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0;
+
+            // Google Logic: Don't use angles, use the Phone's Look Vector
+            // We build the full 3D orientation first
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+            deviceQ.setFromEuler(euler);
         }
 
-        function start() {
-            document.getElementById('overlay').style.display = 'none';
-            window.addEventListener('deviceorientation', (e) => {
-                sensor.a = e.alpha || 0;
-                sensor.b = e.beta || 0;
-                sensor.g = e.gamma || 0;
-            });
-            init();
+        function resetYaw() {
+            worldOffset = calculateProjectedYaw();
         }
 
-        function reset() {
-            // Recenter based on current horizontal value
-            offsetYaw = calculateCurrentYaw();
-        }
+        function calculateProjectedYaw() {
+            // 1. Point a vector out the back of the phone
+            const lookVector = new THREE.Vector3(0, 0, -1);
+            lookVector.applyQuaternion(deviceQ);
 
-        function calculateCurrentYaw() {
-            const degToRad = Math.PI / 180;
-            // Determine if phone is upright (Beta ~90) or flat (Beta ~0)
-            const isUpright = Math.abs(sensor.b) > 45;
-            
-            if (isUpright) {
-                // In upright mode, Alpha is often jittery or swapped with Gamma
-                // Let's test if Gamma is the primary horizontal mover here
-                return sensor.a * degToRad; // Testing Alpha first, even in upright
-            } else {
-                return sensor.a * degToRad; // Flat mode uses Alpha
-            }
+            // 2. Project it onto the XZ (Floor) plane
+            // 3. Find the angle of that projection (The True Panning)
+            return Math.atan2(lookVector.x, -lookVector.z);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (worldGroup) {
-                const degToRad = Math.PI / 180;
+            if (isStarted) {
+                const currentYaw = calculateProjectedYaw();
                 
-                // Logic: 
-                // If Beta is > 45, the phone is tilted up. 
-                // In this state, panning is often Alpha, but sometimes Gamma.
-                const isUpright = Math.abs(sensor.b) > 45;
-                document.getElementById('mode-display').innerText = isUpright ? "UPRIGHT (CAMERA)" : "FLAT (COMPASS)";
-                
-                let currentYaw = sensor.a * degToRad;
-                
-                // INVERSION: To keep pillar still, move world opposite to phone
-                worldGroup.rotation.y = -(currentYaw - offsetYaw);
+                // Keep the world still by rotating it opposite to our panning
+                world.rotation.y = -(currentYaw - worldOffset);
 
-                // HUD
-                document.getElementById('val-a').innerText = sensor.a.toFixed(1);
-                document.getElementById('val-b').innerText = sensor.b.toFixed(1);
-                document.getElementById('val-g').innerText = sensor.g.toFixed(1);
-                document.getElementById('val-yaw').innerText = worldGroup.rotation.y.toFixed(2);
+                // HUD updates
+                document.getElementById('yaw-val').innerText = (world.rotation.y * (180/Math.PI)).toFixed(1);
+                
+                const beta = new THREE.Euler().setFromQuaternion(deviceQ).x;
+                document.getElementById('orient-label').innerText = 
+                    Math.abs(beta) > 1 ? "Upright (Camera Mode)" : "Flat (Table Mode)";
             }
             renderer.render(scene, camera);
         }
