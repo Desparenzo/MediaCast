@@ -3,211 +3,230 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Path Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>High-Precision GPS Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            background-color: #f3f4f6;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-        }
+        body { background-color: #0f172a; color: white; font-family: system-ui, sans-serif; overflow-x: hidden; }
         #map-container {
             aspect-ratio: 1 / 1;
-            background-image: 
-                linear-gradient(#e5e7eb 1px, transparent 1px),
-                linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
-            background-size: 20px 20px;
+            background-color: #1e293b;
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 30px 30px;
         }
-        .dot {
-            transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-        }
-        .compass-arrow {
-            width: 0;
-            height: 0;
-            border-left: 8px solid transparent;
-            border-right: 8px solid transparent;
-            border-bottom: 20px solid #2563eb;
+        .dot { transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1); }
+        .accuracy-ring {
             position: absolute;
-            top: -25px;
-            left: 50%;
-            transform: translateX(-50%);
+            border: 2px solid rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        .compass-needle {
+            width: 4px; height: 16px; background: #3b82f6;
+            position: absolute; top: -18px; left: calc(50% - 2px);
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
         }
     </style>
 </head>
-<body class="p-4 max-w-lg mx-auto font-sans pb-20">
+<body class="p-4 max-w-lg mx-auto">
 
-    <h1 class="text-2xl font-bold mb-4 text-gray-800 flex items-center gap-2">
-        <span class="bg-blue-600 text-white p-1 rounded">GPS</span> Navigator
-    </h1>
+    <header class="mb-6">
+        <h1 class="text-xl font-black tracking-tight text-blue-400">SAT-TRACK PRO</h1>
+        <p class="text-[10px] text-gray-500 uppercase tracking-widest">Hardware Sensor Interface</p>
+    </header>
 
-    <!-- Start Location Box -->
-    <div class="bg-white p-4 rounded-xl shadow-sm mb-3 border border-gray-200">
-        <label class="block text-xs font-bold text-gray-500 uppercase mb-2">1. Start Point</label>
-        <div class="flex gap-2">
-            <input type="text" id="start-coords" placeholder="Lat, Long" 
-                class="flex-1 p-2 bg-gray-50 border rounded-lg text-sm outline-none focus:border-blue-500">
-            <button onclick="updateManualPoint('start')" class="bg-gray-800 text-white px-3 py-2 rounded-lg text-xs font-bold">Find</button>
-            <button onclick="setCurrentTo('start')" class="bg-blue-100 text-blue-700 p-2 rounded-lg" title="Use My GPS">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-            </button>
+    <!-- Inputs -->
+    <div class="space-y-3 mb-6">
+        <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+            <label class="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Start Point</label>
+            <div class="flex gap-2">
+                <input type="text" id="start-coords" placeholder="Lat, Long" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                <button onclick="updateManual('start')" class="bg-slate-700 px-3 rounded-lg text-xs font-bold">Find</button>
+                <button onclick="setGPS('start')" class="bg-blue-600 p-2 rounded-lg">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+            <label class="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Target Point</label>
+            <div class="flex gap-2">
+                <input type="text" id="target-coords" placeholder="Lat, Long" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                <button onclick="updateManual('target')" class="bg-slate-700 px-3 rounded-lg text-xs font-bold">Find</button>
+            </div>
         </div>
     </div>
 
-    <!-- Target Location Box -->
-    <div class="bg-white p-4 rounded-xl shadow-sm mb-4 border border-gray-200">
-        <label class="block text-xs font-bold text-gray-500 uppercase mb-2">2. Target Destination</label>
-        <div class="flex gap-2">
-            <input type="text" id="target-coords" placeholder="Lat, Long" 
-                class="flex-1 p-2 bg-gray-50 border rounded-lg text-sm outline-none focus:border-blue-500">
-            <button onclick="updateManualPoint('target')" class="bg-gray-800 text-white px-3 py-2 rounded-lg text-xs font-bold">Find</button>
-        </div>
-    </div>
-
-    <!-- Generate Action -->
-    <button onclick="generateMap()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-200 active:scale-95 transition mb-6">
-        GENERATE LIVE MAP
+    <button onclick="generateMap()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-xl transition-all active:scale-95 mb-6">
+        ENGAGE LIVE TRACKING
     </button>
 
-    <!-- Map Area -->
-    <div id="map-container" class="relative bg-white border-2 border-gray-300 rounded-2xl overflow-hidden shadow-inner mb-4">
-        <!-- Connecting Line -->
+    <!-- Map Display -->
+    <div id="map-container" class="relative rounded-2xl border-2 border-slate-700 overflow-hidden shadow-2xl mb-4">
         <svg id="svg-layer" class="absolute inset-0 w-full h-full pointer-events-none">
-            <line id="path-line" x1="0" y1="0" x2="0" y2="0" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8,5" opacity="0" />
+            <line id="path-line" x1="0" y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.3)" stroke-width="2" stroke-dasharray="8,4" />
         </svg>
 
-        <!-- Start Point Marker -->
-        <div id="point-start" class="dot absolute w-4 h-4 bg-gray-400 rounded-full border-2 border-white shadow-md transform -translate-x-1/2 -translate-y-1/2 hidden">
-            <span class="absolute top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-400">START</span>
-        </div>
-
-        <!-- Target Point Marker -->
-        <div id="point-target" class="dot absolute w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-md transform -translate-x-1/2 -translate-y-1/2 hidden">
-             <div class="animate-ping absolute inset-0 rounded-full bg-red-400 opacity-75"></div>
-             <span class="absolute top-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-red-500">TARGET</span>
-        </div>
-
-        <!-- Current Location Marker with Compass -->
-        <div id="point-current" class="dot absolute w-6 h-6 bg-blue-600 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2 z-10 hidden">
-            <div id="compass-direction" class="absolute inset-0 flex items-center justify-center">
-                <div class="compass-arrow"></div>
+        <div id="acc-ring" class="accuracy-ring hidden"></div>
+        <div id="point-start" class="dot absolute w-3 h-3 bg-slate-400 rounded-full border border-white hidden transform -translate-x-1/2 -translate-y-1/2"></div>
+        <div id="point-target" class="dot absolute w-4 h-4 bg-red-500 rounded-full border-2 border-white hidden transform -translate-x-1/2 -translate-y-1/2"></div>
+        
+        <!-- User with Direction -->
+        <div id="point-current" class="dot absolute w-5 h-5 bg-blue-500 rounded-full border-2 border-white hidden transform -translate-x-1/2 -translate-y-1/2 z-20">
+            <div id="compass-node" class="absolute inset-0">
+                <div class="compass-needle"></div>
             </div>
-            <div class="w-full h-full rounded-full border-2 border-blue-200 animate-pulse"></div>
         </div>
     </div>
 
-    <!-- Telemetry -->
-    <div class="grid grid-cols-2 gap-3 mb-4">
-        <div class="bg-gray-800 p-3 rounded-lg">
-            <div class="text-[10px] text-gray-400 uppercase">Heading</div>
-            <div id="status-heading" class="text-green-400 font-mono text-sm">0° (N)</div>
+    <!-- Live Data Dashboard -->
+    <div class="grid grid-cols-3 gap-2">
+        <div class="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+            <div class="text-[8px] text-gray-500 uppercase">Accuracy</div>
+            <div id="data-acc" class="text-xs font-mono text-blue-400">--</div>
         </div>
-        <div class="bg-gray-800 p-3 rounded-lg text-right">
-            <div class="text-[10px] text-gray-400 uppercase">Distance to Target</div>
-            <div id="status-dist" class="text-green-400 font-mono text-sm">---</div>
+        <div class="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+            <div class="text-[8px] text-gray-500 uppercase">Heading</div>
+            <div id="data-head" class="text-xs font-mono text-blue-400">0°</div>
         </div>
-    </div>
-
-    <div id="debug-log" class="text-[10px] font-mono text-gray-400 p-2 bg-gray-100 rounded border border-dashed">
-        Status: Ready. Set Start & Target to begin.
+        <div class="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+            <div class="text-[8px] text-gray-500 uppercase">Distance</div>
+            <div id="data-dist" class="text-xs font-mono text-blue-400">0m</div>
+        </div>
     </div>
 
     <script>
-        let points = { start: null, target: null, current: null };
-        let heading = 0;
-        let isMapGenerated = false;
+        let pts = { start: null, target: null, current: null };
+        let isLive = false;
+        let accuracy = 0;
 
-        // 1. Setup GPS Sensor
-        function initTracking() {
-            if (!"geolocation" in navigator) {
-                log("Geolocation not supported");
-                return;
+        function init() {
+            // Aggressive High Accuracy Tracking
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    (p) => {
+                        pts.current = { lat: p.coords.latitude, lng: p.coords.longitude };
+                        accuracy = p.coords.accuracy;
+                        document.getElementById('data-acc').innerText = accuracy.toFixed(0) + 'm';
+                        if (isLive) render();
+                    },
+                    (e) => console.error(e),
+                    { 
+                        enableHighAccuracy: true, // Forces Hardware GPS
+                        maximumAge: 0,            // No cached locations
+                        timeout: 10000 
+                    }
+                );
             }
 
-            navigator.geolocation.watchPosition(
-                (pos) => {
-                    points.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    if (isMapGenerated) render();
-                },
-                (err) => log("GPS Error: " + err.message),
-                { enableHighAccuracy: true, maximumAge: 0 }
-            );
-
-            // 2. Setup Compass (Orientation)
+            // Compass setup
             if (window.DeviceOrientationEvent) {
-                // Request permission for iOS 13+
+                const handler = (e) => {
+                    let head = e.webkitCompassHeading || (360 - e.alpha);
+                    if (head) {
+                        document.getElementById('compass-node').style.transform = `rotate(${head}deg)`;
+                        document.getElementById('data-head').innerText = Math.round(head) + '°';
+                    }
+                };
+                
                 if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    window.addEventListener('click', () => {
-                        DeviceOrientationEvent.requestPermission()
-                            .then(state => { if (state === 'granted') listenOrientation(); })
-                            .catch(console.error);
+                    document.body.addEventListener('click', () => {
+                        DeviceOrientationEvent.requestPermission().then(s => {
+                            if(s === 'granted') window.addEventListener('deviceorientation', handler);
+                        });
                     }, { once: true });
                 } else {
-                    listenOrientation();
+                    window.addEventListener('deviceorientation', handler);
                 }
             }
         }
 
-        function listenOrientation() {
-            window.addEventListener('deviceorientationabsolute', handleOrientation);
-            window.addEventListener('deviceorientation', handleOrientation);
+        function setGPS(id) {
+            navigator.geolocation.getCurrentPosition(p => {
+                const val = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`;
+                document.getElementById(`${id}-coords`).value = val;
+                pts[id] = { lat: p.coords.latitude, lng: p.coords.longitude };
+                if(isLive) render();
+            }, null, { enableHighAccuracy: true });
         }
 
-        function handleOrientation(event) {
-            // Check for compass heading
-            let compass = event.webkitCompassHeading || (360 - event.alpha);
-            if (compass) {
-                heading = compass;
-                document.getElementById('compass-direction').style.transform = `rotate(${heading}px)`; // Incorrect unit fixed in line below
-                document.getElementById('compass-direction').style.transform = `rotate(${heading}deg)`;
-                
-                const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-                const dIdx = Math.round(heading / 45) % 8;
-                document.getElementById('status-heading').innerText = `${Math.round(heading)}° (${directions[dIdx]})`;
+        function updateManual(id) {
+            const val = document.getElementById(`${id}-coords`).value;
+            const parts = val.split(',').map(x => parseFloat(x.trim()));
+            if (parts.length === 2 && !isNaN(parts[0])) {
+                pts[id] = { lat: parts[0], lng: parts[1] };
+                if(isLive) render();
             }
-        }
-
-        // 3. User Actions
-        function updateManualPoint(id) {
-            const p = parseCoords(id);
-            if (p) {
-                points[id] = p;
-                log(`Point '${id}' updated.`);
-                if (isMapGenerated) render();
-            } else {
-                log(`Invalid format for ${id}. Use: lat, long`);
-            }
-        }
-
-        async function setCurrentTo(id) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const lat = pos.coords.latitude.toFixed(6);
-                const lng = pos.coords.longitude.toFixed(6);
-                document.getElementById(`${id}-coords`).value = `${lat}, ${lng}`;
-                points[id] = { lat: parseFloat(lat), lng: parseFloat(lng) };
-                log(`${id} set to current location.`);
-            }, (err) => log("GPS Error: " + err.message));
         }
 
         function generateMap() {
-            if (!points.start || !points.target) {
-                log("Error: Set both Start and Target first.");
-                return;
-            }
-            isMapGenerated = true;
+            if (!pts.start || !pts.target) return;
+            isLive = true;
             render();
-            log("Live Map Generated.");
         }
 
-        // 4. Logic & UI
-        function parseCoords(id) {
-            const val = document.getElementById(`${id}-coords`).value;
-            const parts = val.split(',').map(p => parseFloat(p.trim()));
-            return (parts.length === 2 && !isNaN(parts[0])) ? { lat: parts[0], lng: parts[1] } : null;
+        function render() {
+            const box = document.getElementById('map-container');
+            const w = box.clientWidth, h = box.clientHeight, pad = 50;
+            const active = [pts.start, pts.target, pts.current].filter(Boolean);
+            
+            let minLat = Math.min(...active.map(p => p.lat));
+            let maxLat = Math.max(...active.map(p => p.lat));
+            let minLng = Math.min(...active.map(p => p.lng));
+            let maxLng = Math.max(...active.map(p => p.lng));
+
+            // Viewport Padding
+            const latRange = Math.max(maxLat - minLat, 0.001);
+            const lngRange = Math.max(maxLng - minLng, 0.001);
+            
+            const getX = (lng) => pad + ((lng - minLng) / lngRange) * (w - 2 * pad);
+            const getY = (lat) => h - (pad + ((lat - minLat) / latRange) * (h - 2 * pad));
+
+            // Update markers
+            const draw = (id, pt) => {
+                const el = document.getElementById(id);
+                if (pt) {
+                    el.classList.remove('hidden');
+                    el.style.left = getX(pt.lng) + 'px';
+                    el.style.top = getY(pt.lat) + 'px';
+                }
+            };
+
+            draw('point-start', pts.start);
+            draw('point-target', pts.target);
+            draw('point-current', pts.current);
+
+            // Accuracy Ring Scale
+            const ring = document.getElementById('acc-ring');
+            if (pts.current) {
+                ring.classList.remove('hidden');
+                ring.style.left = getX(pts.current.lng) + 'px';
+                ring.style.top = getY(pts.current.lat) + 'px';
+                // Simplified pixels per meter scaling
+                const ringSize = Math.max(20, (accuracy / (latRange * 111000)) * h);
+                ring.style.width = ringSize + 'px';
+                ring.style.height = ringSize + 'px';
+            }
+
+            // Line
+            const line = document.getElementById('path-line');
+            if (pts.start && pts.target) {
+                line.setAttribute('x1', getX(pts.start.lng));
+                line.setAttribute('y1', getY(pts.start.lat));
+                line.setAttribute('x2', getX(pts.target.lng));
+                line.setAttribute('y2', getY(pts.target.lat));
+            }
+
+            // Dist
+            if (pts.current && pts.target) {
+                const d = calcDist(pts.current, pts.target);
+                document.getElementById('data-dist').innerText = d > 1 ? d.toFixed(1) + 'km' : Math.round(d * 1000) + 'm';
+            }
         }
 
-        function calculateDistance(p1, p2) {
-            if (!p1 || !p2) return 0;
+        function calcDist(p1, p2) {
             const R = 6371;
             const dLat = (p2.lat - p1.lat) * Math.PI / 180;
             const dLon = (p2.lng - p1.lng) * Math.PI / 180;
@@ -215,68 +234,7 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
-        function render() {
-            const container = document.getElementById('map-container');
-            const w = container.clientWidth;
-            const h = container.clientHeight;
-            const padding = 60; 
-
-            const activePoints = [];
-            if (points.start) activePoints.push(points.start);
-            if (points.target) activePoints.push(points.target);
-            if (points.current) activePoints.push(points.current);
-
-            if (activePoints.length === 0) return;
-
-            // Calculate Bounds
-            let minLat = Math.min(...activePoints.map(p => p.lat));
-            let maxLat = Math.max(...activePoints.map(p => p.lat));
-            let minLng = Math.min(...activePoints.map(p => p.lng));
-            let maxLng = Math.max(...activePoints.map(p => p.lng));
-
-            // Zoom out slightly if points are very close
-            const diffLat = maxLat - minLat;
-            const diffLng = maxLng - minLng;
-            if (diffLat < 0.0005) { minLat -= 0.0005; maxLat += 0.0005; }
-            if (diffLng < 0.0005) { minLng -= 0.0005; maxLng += 0.0005; }
-
-            const getX = (lng) => padding + ((lng - minLng) / (maxLng - minLng)) * (w - 2 * padding);
-            const getY = (lat) => h - (padding + ((lat - minLat) / (maxLat - minLat)) * (h - 2 * padding));
-
-            const updateDot = (elId, point) => {
-                const el = document.getElementById(elId);
-                if (point) {
-                    el.classList.remove('hidden');
-                    el.style.left = getX(point.lng) + 'px';
-                    el.style.top = getY(point.lat) + 'px';
-                }
-            };
-
-            updateDot('point-start', points.start);
-            updateDot('point-target', points.target);
-            updateDot('point-current', points.current);
-
-            const line = document.getElementById('path-line');
-            if (points.start && points.target) {
-                line.setAttribute('x1', getX(points.start.lng));
-                line.setAttribute('y1', getY(points.start.lat));
-                line.setAttribute('x2', getX(points.target.lng));
-                line.setAttribute('y2', getY(points.target.lat));
-                line.setAttribute('opacity', '1');
-            }
-
-            if (points.current && points.target) {
-                const d = calculateDistance(points.current, points.target);
-                document.getElementById('status-dist').innerText = d > 1 ? d.toFixed(2) + 'km' : (d * 1000).toFixed(0) + 'm';
-            }
-        }
-
-        function log(msg) {
-            document.getElementById('debug-log').innerText = "Status: " + msg;
-        }
-
-        window.onload = initTracking;
-        window.addEventListener('resize', render);
+        window.onload = init;
     </script>
 </body>
 </html>
