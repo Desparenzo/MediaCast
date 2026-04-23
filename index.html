@@ -4,162 +4,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Offline Compass Tracker</title>
+    <title>Direct GPS Compass</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #000; color: #fff; font-family: ui-sans-serif, system-ui, sans-serif; overflow: hidden; touch-action: manipulation; }
-        
-        .compass-area {
+        body { background-color: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+        .compass-ring {
             width: 280px;
             height: 280px;
+            border: 2px solid #1a1a1a;
             border-radius: 50%;
-            border: 2px solid #111;
-            position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            background: radial-gradient(circle, #080808 0%, #000 100%);
+            position: relative;
+            background: radial-gradient(circle, #0a0a0a 0%, #000 100%);
         }
-
         #arrow {
-            width: 100px;
-            height: 100px;
-            fill: #ef4444;
-            filter: drop-shadow(0 0 15px rgba(239, 68, 68, 0.5));
+            width: 110px;
+            height: 110px;
+            fill: #ff3b30;
+            filter: drop-shadow(0 0 15px rgba(255, 59, 48, 0.6));
             transition: transform 0.1s linear;
         }
-
-        .code-display {
-            font-family: 'Courier New', Courier, monospace;
-            letter-spacing: 2px;
-            text-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
-        }
-
-        input::placeholder { color: #333; }
-
-        /* Minimal Pulse for active tracking */
-        @keyframes pulse-red {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .tracking-active { animation: pulse-red 2s infinite; }
+        .distance-display { font-variant-numeric: tabular-nums; }
     </style>
 </head>
-<body class="flex flex-col h-screen w-screen p-6 justify-between items-center">
+<body class="flex flex-col h-screen w-screen p-6 items-center justify-between">
 
-    <!-- TOP: MY GENERATED CODE -->
-    <div class="w-full max-w-sm flex flex-col items-center pt-4">
-        <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Your Location Code</p>
-        <div class="w-full bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
-            <div id="my-code" class="text-2xl font-black text-red-500 code-display">LOADING...</div>
-            <button id="copy-btn" class="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl transition-all active:scale-90">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            </button>
-        </div>
-        <p class="text-[10px] text-gray-600 mt-2">Tap button to copy & send to anyone</p>
+    <!-- TOP SECTION: SHARING -->
+    <div class="w-full max-w-sm text-center pt-4">
+        <p class="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-4">My Location Status</p>
+        <div id="gps-status" class="text-xs text-yellow-500 mb-4 font-mono">Waiting for GPS...</div>
+        
+        <button id="share-btn" class="w-full bg-white text-black font-bold py-4 rounded-2xl flex items-center justify-center space-x-2 active:scale-95 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+            <span>SEND MY LOCATION</span>
+        </button>
     </div>
 
-    <!-- MIDDLE: THE COMPASS -->
+    <!-- MIDDLE SECTION: COMPASS -->
     <div class="flex flex-col items-center">
-        <div id="ring" class="compass-area">
+        <div class="compass-ring">
             <svg id="arrow" viewBox="0 0 100 100">
-                <path d="M50 5 L95 90 L50 75 L5 90 Z" />
+                <path d="M50 2 L95 90 L50 75 L5 90 Z" />
             </svg>
             
-            <div class="absolute -bottom-12 flex flex-col items-center">
-                <div id="dist-val" class="text-4xl font-black">--</div>
-                <div id="dist-unit" class="text-xs text-gray-500 uppercase tracking-widest">Target Not Set</div>
+            <div class="absolute -bottom-14 flex flex-col items-center">
+                <div id="dist-val" class="text-5xl font-black distance-display">--</div>
+                <div id="dist-unit" class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Ready for input</div>
             </div>
         </div>
     </div>
 
-    <!-- BOTTOM: INPUT TARGET CODE -->
-    <div class="w-full max-w-sm pb-8">
-        <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-3 text-center">Paste Target Code</p>
-        <input type="text" id="target-input" placeholder="PASTE HERE" 
-               class="w-full bg-transparent border-b-2 border-gray-800 py-4 text-center text-2xl font-black text-white focus:outline-none focus:border-red-600 transition-all uppercase tracking-widest">
+    <!-- BOTTOM SECTION: RECEIVING -->
+    <div class="w-full max-w-sm pb-10">
+        <button id="locate-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-5 rounded-2xl flex flex-col items-center justify-center shadow-lg active:scale-95 transition-transform">
+            <span class="text-lg">LOCATE TARGET</span>
+            <span class="text-[10px] opacity-70 font-normal uppercase mt-1">Paste from Clipboard</span>
+        </button>
         
-        <div class="mt-4 flex justify-between text-[10px] text-gray-600 font-mono">
-            <span>ME: <span id="my-raw">--</span></span>
-            <span>TGT: <span id="tgt-raw">--</span></span>
+        <div class="mt-6 flex justify-between text-[9px] font-mono text-gray-600 uppercase">
+            <div>MY: <span id="my-raw">---</span></div>
+            <div>TGT: <span id="tgt-raw">---</span></div>
         </div>
     </div>
 
     <script>
-        // --- DATA COMPRESSION (BASE 36) ---
-        // Compresses global coords into 8-10 characters
-        function encodeCoords(lat, lng) {
-            // Normalize: Shift to all positive, multiply by 100,000 for precision
-            const flat = Math.floor((lat + 90) * 100000);
-            const flng = Math.floor((lng + 180) * 100000);
-            return flat.toString(36).toUpperCase() + "X" + flng.toString(36).toUpperCase();
-        }
-
-        function decodeCoords(code) {
-            try {
-                const parts = code.toUpperCase().split('X');
-                if (parts.length !== 2) return null;
-                const lat = (parseInt(parts[0], 36) / 100000) - 90;
-                const lng = (parseInt(parts[1], 36) / 100000) - 180;
-                return isNaN(lat) || isNaN(lng) ? null : { lat, lng };
-            } catch (e) { return null; }
-        }
-
-        // --- CORE STATE ---
         let myLoc = { lat: null, lng: null };
         let targetLoc = null;
         let phoneHeading = 0;
         let targetBearing = 0;
 
-        const myCodeEl = document.getElementById('my-code');
-        const targetInput = document.getElementById('target-input');
-        const arrow = document.getElementById('arrow');
-        const distVal = document.getElementById('dist-val');
-        const distUnit = document.getElementById('dist-unit');
-        const ring = document.getElementById('ring');
+        // --- GPS SENSORS ---
+        const options = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
 
-        // 1. Android Compass (Absolute Orientation)
-        window.addEventListener('deviceorientationabsolute', (e) => {
-            if (e.alpha !== null) {
-                // Adjusting for common Android browser behavior
-                phoneHeading = 360 - e.alpha; 
-                updateArrow();
-            }
-        }, true);
-
-        // 2. GPS Monitoring
         navigator.geolocation.watchPosition((pos) => {
             myLoc.lat = pos.coords.latitude;
             myLoc.lng = pos.coords.longitude;
             
-            const code = encodeCoords(myLoc.lat, myLoc.lng);
-            myCodeEl.innerText = code;
-            document.getElementById('my-raw').innerText = `${myLoc.lat.toFixed(2)},${myLoc.lng.toFixed(2)}`;
+            const accuracy = Math.round(pos.coords.accuracy);
+            document.getElementById('gps-status').innerText = `GPS ACTIVE (ACCURACY: ${accuracy}m)`;
+            document.getElementById('gps-status').classList.replace('text-yellow-500', 'text-green-500');
+            document.getElementById('my-raw').innerText = `${myLoc.lat.toFixed(4)},${myLoc.lng.toFixed(4)}`;
             
-            updateCalculations();
+            updateLogic();
         }, (err) => {
-            myCodeEl.innerText = "GPS ERROR";
-            console.error(err);
-        }, { enableHighAccuracy: true });
+            document.getElementById('gps-status').innerText = "GPS ERROR: ENABLE LOCATION";
+            document.getElementById('gps-status').classList.replace('text-yellow-500', 'text-red-500');
+        }, options);
 
-        // 3. Target Input Listening
-        targetInput.addEventListener('input', (e) => {
-            const code = e.target.value.trim().toUpperCase();
-            const decoded = decodeCoords(code);
-            if (decoded) {
-                targetLoc = decoded;
-                ring.classList.add('tracking-active');
-                document.getElementById('tgt-raw').innerText = `${targetLoc.lat.toFixed(2)},${targetLoc.lng.toFixed(2)}`;
-                updateCalculations();
+        // --- COMPASS SENSOR ---
+        window.addEventListener('deviceorientationabsolute', (e) => {
+            if (e.alpha !== null) {
+                phoneHeading = 360 - e.alpha;
+                renderArrow();
             }
-        });
+        }, true);
 
-        // 4. Calculations
-        function updateCalculations() {
+        // --- BUTTON ACTIONS ---
+        
+        // SHARE
+        document.getElementById('share-btn').onclick = async () => {
+            if (!myLoc.lat) return;
+            const text = `LOC:${myLoc.lat},${myLoc.lng}`;
+            
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title: 'My Location', text: text });
+                } catch (err) { console.log("Share cancelled"); }
+            } else {
+                // Fallback: Copy to clipboard if sharing API is unavailable
+                const el = document.createElement('textarea');
+                el.value = text;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                alert("Location text copied to clipboard! Paste it in WhatsApp.");
+            }
+        };
+
+        // LOCATE (Clipboard Paste)
+        document.getElementById('locate-btn').onclick = async () => {
+            try {
+                // Since navigator.clipboard might be blocked in some webviews, 
+                // we'll try it, but also provide an input fallback if it fails.
+                const text = await navigator.clipboard.readText();
+                processIncomingText(text);
+            } catch (err) {
+                const manual = prompt("Paste the location string here (e.g. LOC:22.5,88.3):");
+                if (manual) processIncomingText(manual);
+            }
+        };
+
+        function processIncomingText(text) {
+            const match = text.match(/LOC:(-?\d+\.\d+),(-?\d+\.\d+)/);
+            if (match) {
+                targetLoc = { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
+                document.getElementById('tgt-raw').innerText = `${targetLoc.lat.toFixed(4)},${targetLoc.lng.toFixed(4)}`;
+                document.getElementById('dist-unit').innerText = "Target Locked";
+                updateLogic();
+            } else {
+                alert("Invalid code in clipboard. Make sure you copied the whole message.");
+            }
+        }
+
+        // --- MATH ---
+        function updateLogic() {
             if (!myLoc.lat || !targetLoc) return;
 
-            // Distance (Haversine)
+            // Haversine Distance
             const R = 6371000;
             const dLat = (targetLoc.lat - myLoc.lat) * Math.PI / 180;
             const dLon = (targetLoc.lng - myLoc.lng) * Math.PI / 180;
@@ -168,48 +162,25 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             const d = R * c;
 
-            if (d > 1000) {
-                distVal.innerText = (d/1000).toFixed(1);
-                distUnit.innerText = "Kilometers Away";
-            } else {
-                distVal.innerText = Math.round(d);
-                distUnit.innerText = "Meters Away";
-            }
+            const val = d > 1000 ? (d/1000).toFixed(2) : Math.round(d);
+            const unit = d > 1000 ? "Kilometers" : "Meters";
+            
+            document.getElementById('dist-val').innerText = val;
+            document.getElementById('dist-unit').innerText = unit + " Away";
 
-            // Bearing (Angle from North)
+            // Bearing
             const y = Math.sin(dLon) * Math.cos(targetLoc.lat * Math.PI / 180);
             const x = Math.cos(myLoc.lat * Math.PI / 180) * Math.sin(targetLoc.lat * Math.PI / 180) -
                       Math.sin(myLoc.lat * Math.PI / 180) * Math.cos(targetLoc.lat * Math.PI / 180) * Math.cos(dLon);
             targetBearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
             
-            updateArrow();
+            renderArrow();
         }
 
-        function updateArrow() {
-            // Visual rotation = Bearing to Target - Physical Heading of phone
+        function renderArrow() {
             const finalRotation = targetBearing - phoneHeading;
-            arrow.style.transform = `rotate(${finalRotation}deg)`;
+            document.getElementById('arrow').style.transform = `rotate(${finalRotation}deg)`;
         }
-
-        // 5. Utility: Copy to Clipboard
-        document.getElementById('copy-btn').onclick = () => {
-            const code = myCodeEl.innerText;
-            if (code === "LOADING..." || code === "GPS ERROR") return;
-            
-            // Clipboard API fallback for standard browser environments
-            const temp = document.createElement("textarea");
-            temp.value = code;
-            document.body.appendChild(temp);
-            temp.select();
-            document.execCommand("copy");
-            document.body.removeChild(temp);
-            
-            // UI feedback
-            const btn = document.getElementById('copy-btn');
-            const oldHtml = btn.innerHTML;
-            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-            setTimeout(() => { btn.innerHTML = oldHtml; }, 2000);
-        };
     </script>
 </body>
 </html>
