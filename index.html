@@ -4,247 +4,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PointWay Navigator</title>
+    <title>GridNavigator - Tactical Map</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
-            background-color: #0f172a;
-            color: #f8fafc;
-            font-family: system-ui, -apple-system, sans-serif;
-            touch-action: manipulation;
+            background-color: #050505;
+            color: #00ff41;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            touch-action: none;
         }
-        .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            z-index: 50;
         }
-        .compass-arrow {
-            transition: transform 0.2s ease-out;
-            filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.5));
+        #map-canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #0a0a0a;
         }
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
+        .ui-panel {
+            background: rgba(10, 10, 10, 0.85);
+            border: 1px solid #00ff41;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+            backdrop-filter: blur(5px);
         }
-        .status-pulse {
-            animation: pulse 2s infinite;
+        .btn-action {
+            background: #00ff41;
+            color: #000;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .btn-action:active {
+            transform: scale(0.95);
+            filter: brightness(0.8);
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col p-4">
+<body class="h-screen w-screen flex flex-col">
+    <div class="crt-overlay"></div>
 
-    <!-- Header / My Location -->
-    <header class="glass rounded-2xl p-6 mb-4 text-center">
-        <h1 class="text-xs uppercase tracking-widest text-slate-400 mb-2">My Current Coordinates</h1>
-        <div id="my-coords" class="text-xl font-mono font-bold text-sky-400 mb-4">
-            Waiting for GPS...
+    <!-- Top Status HUD -->
+    <div class="ui-panel m-2 p-3 rounded flex justify-between items-center text-[10px] z-10">
+        <div>
+            <span class="opacity-50 text-white">CURRENT_POS:</span>
+            <span id="pos-display">WAITING...</span>
         </div>
-        <button id="copy-btn" class="w-full bg-sky-600 hover:bg-sky-500 active:scale-95 transition-all text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            GET MY LOCATION & COPY
-        </button>
-        <div id="copy-toast" class="text-xs text-emerald-400 mt-2 opacity-0 transition-opacity">Copied to clipboard!</div>
-    </header>
+        <div id="gps-indicator" class="flex items-center gap-1">
+            <div class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_5px_red]"></div>
+            GPS_LOST
+        </div>
+    </div>
 
-    <!-- Finder Section -->
-    <main class="flex-grow flex flex-col gap-4">
-        <section class="glass rounded-2xl p-6">
-            <h2 class="text-xs uppercase tracking-widest text-slate-400 mb-3">Find a Shared Location</h2>
-            <div class="flex gap-2">
-                <input type="text" id="find-input" placeholder="Paste lat_long here..." 
-                    class="flex-grow bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-                <button id="find-btn" class="bg-emerald-600 hover:bg-emerald-500 px-6 py-3 rounded-xl font-bold active:scale-95 transition-all">
-                    FIND
-                </button>
+    <!-- Map Area -->
+    <div class="relative flex-grow overflow-hidden m-2 border border-[#00ff41]/30 rounded">
+        <canvas id="map-canvas"></canvas>
+        
+        <!-- Target Info Overlay -->
+        <div id="target-hud" class="absolute bottom-4 left-4 ui-panel p-2 rounded text-[10px] hidden">
+            <div class="text-white opacity-50 mb-1">TARGET_LOCK:</div>
+            <div id="target-coords" class="mb-2">---</div>
+            <div class="flex gap-4">
+                <div>Δ_LAT: <span id="dist-lat">0</span></div>
+                <div>Δ_LNG: <span id="dist-lng">0</span></div>
             </div>
-        </section>
+        </div>
+    </div>
 
-        <!-- Navigation Display (Hidden by default) -->
-        <section id="nav-display" class="hidden flex-grow glass rounded-2xl p-6 flex flex-col items-center justify-center text-center">
-            <div class="mb-4">
-                <span class="text-xs uppercase tracking-widest text-slate-400">Target Distance</span>
-                <div id="distance-text" class="text-4xl font-black text-white">0.00 km</div>
-            </div>
-
-            <!-- Compass Visual -->
-            <div class="relative w-48 h-48 mb-6">
-                <div class="absolute inset-0 border-4 border-slate-700 rounded-full"></div>
-                <div class="absolute inset-0 border border-slate-800 rounded-full scale-75"></div>
-                <div id="arrow-container" class="absolute inset-0 flex items-center justify-center compass-arrow">
-                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#38bdf8" />
-                    </svg>
-                </div>
-            </div>
-
-            <p class="text-sm text-slate-400 max-w-[200px]">
-                Point the top of your phone towards the target.
-            </p>
-        </section>
-
-        <section id="idle-msg" class="flex-grow flex items-center justify-center text-slate-500 italic text-center px-10">
-            Paste a location code above to start navigation.
-        </section>
-    </main>
-
-    <footer class="text-[10px] text-center text-slate-600 mt-4 uppercase tracking-tighter">
-        Works Offline • Uses Device GPS & Magnetometer
-    </footer>
+    <!-- Controls -->
+    <div class="p-2 flex flex-col gap-2 z-10">
+        <div class="flex gap-2">
+            <input type="text" id="find-input" placeholder="PASTE_LAT_LONG" 
+                class="flex-grow bg-black border border-[#00ff41] p-3 text-[#00ff41] placeholder-[#00ff41]/30 text-xs rounded focus:outline-none">
+            <button id="find-btn" class="btn-action px-6 py-3 rounded text-xs">FIND</button>
+        </div>
+        <button id="copy-btn" class="btn-action w-full py-4 rounded text-sm">COPY MY COORDS</button>
+    </div>
 
     <script>
-        let myLat = null;
-        let myLong = null;
-        let targetLat = null;
-        let targetLong = null;
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+        const posDisplay = document.getElementById('pos-display');
+        const gpsIndicator = document.getElementById('gps-indicator');
+        const targetHud = document.getElementById('target-hud');
+
+        let myPos = { lat: 0, lng: 0 };
+        let originPos = null; // Where we started
+        let targetPos = null;
         let deviceHeading = 0;
+        let points = []; // Trail
 
-        const myCoordsDisplay = document.getElementById('my-coords');
-        const copyBtn = document.getElementById('copy-btn');
-        const copyToast = document.getElementById('copy-toast');
-        const findInput = document.getElementById('find-input');
-        const findBtn = document.getElementById('find-btn');
-        const navDisplay = document.getElementById('nav-display');
-        const idleMsg = document.getElementById('idle-msg');
-        const distanceText = document.getElementById('distance-text');
-        const arrowContainer = document.getElementById('arrow-container');
+        function init() {
+            window.addEventListener('resize', resize);
+            resize();
+            startTracking();
+            animate();
+        }
 
-        // 1. Get My Location
-        function updateMyLocation() {
-            if (!navigator.geolocation) {
-                myCoordsDisplay.textContent = "GPS Not Supported";
-                return;
-            }
+        function resize() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) return;
 
             navigator.geolocation.watchPosition(
-                (position) => {
-                    myLat = position.coords.latitude;
-                    myLong = position.coords.longitude;
-                    myCoordsDisplay.textContent = `${myLat.toFixed(5)}, ${myLong.toFixed(5)}`;
+                (pos) => {
+                    myPos.lat = pos.coords.latitude;
+                    myPos.lng = pos.coords.longitude;
                     
-                    if (targetLat !== null) {
-                        calculateNavigation();
+                    if (!originPos) {
+                        originPos = { ...myPos };
                     }
+
+                    points.push({ ...myPos });
+                    if (points.length > 500) points.shift();
+
+                    posDisplay.textContent = `${myPos.lat.toFixed(5)}, ${myPos.lng.toFixed(5)}`;
+                    gpsIndicator.innerHTML = `<div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41]"></div> GPS_SYNC`;
+                    
+                    if (targetPos) updateTargetHud();
                 },
-                (err) => {
-                    myCoordsDisplay.textContent = "Error: " + err.message;
-                },
+                (err) => console.error(err),
                 { enableHighAccuracy: true }
             );
+
+            // Compass
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientationabsolute', (e) => {
+                    deviceHeading = e.webkitCompassHeading || (360 - e.alpha);
+                });
+            }
         }
 
-        // 2. Copy to Clipboard
-        copyBtn.addEventListener('click', () => {
-            if (myLat === null || myLong === null) {
-                alert("Wait for GPS signal before copying.");
-                return;
-            }
+        function updateTargetHud() {
+            targetHud.classList.remove('hidden');
+            const dLat = targetPos.lat - myPos.lat;
+            const dLng = targetPos.lng - myPos.lng;
+            document.getElementById('target-coords').textContent = `${targetPos.lat.toFixed(5)}, ${targetPos.lng.toFixed(5)}`;
+            document.getElementById('dist-lat').textContent = dLat.toFixed(5);
+            document.getElementById('dist-lng').textContent = dLng.toFixed(5);
+        }
 
-            const code = `${myLat}_${myLong}`;
-            
-            // Fallback for iFrame/Security restrictions
-            const textArea = document.createElement("textarea");
-            textArea.value = code;
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                copyToast.style.opacity = "1";
-                setTimeout(() => copyToast.style.opacity = "0", 2000);
-            } catch (err) {
-                console.error("Copy failed", err);
-            }
-            document.body.removeChild(textArea);
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            const str = `${myPos.lat}_${myPos.lng}`;
+            const el = document.createElement('textarea');
+            el.value = str;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            alert("COORDINATES SAVED TO CLIPBOARD");
         });
 
-        // 3. Find/Parse Target
-        findBtn.addEventListener('click', () => {
-            const val = findInput.value.trim();
-            if (!val.includes('_')) {
-                alert("Invalid format. Ensure it looks like: lat_long");
-                return;
-            }
-
-            const parts = val.split('_');
-            const lat = parseFloat(parts[0]);
-            const lng = parseFloat(parts[1]);
-
-            if (isNaN(lat) || isNaN(lng)) {
-                alert("Could not read coordinates.");
-                return;
-            }
-
-            targetLat = lat;
-            targetLong = lng;
-
-            navDisplay.classList.remove('hidden');
-            idleMsg.classList.add('hidden');
-            
-            // Request orientation permission for iOS
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(state => {
-                        if (state === 'granted') {
-                            startCompass();
-                        }
-                    });
-            } else {
-                startCompass();
-            }
-
-            calculateNavigation();
+        document.getElementById('find-btn').addEventListener('click', () => {
+            const input = document.getElementById('find-input').value;
+            if (!input.includes('_')) return;
+            const parts = input.split('_');
+            targetPos = { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) };
+            originPos = { ...myPos }; // Reset origin to current spot when finding new
+            updateTargetHud();
         });
 
-        // 4. Compass/Orientation Logic
-        function startCompass() {
-            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-            // Fallback for browsers that don't support absolute
-            window.addEventListener('deviceorientation', handleOrientation, true);
-        }
-
-        function handleOrientation(event) {
-            // webkitCompassHeading is iOS specific, alpha is standard
-            let heading = event.webkitCompassHeading || (360 - event.alpha);
-            if (heading) {
-                deviceHeading = heading;
-                if (targetLat !== null) calculateNavigation();
-            }
-        }
-
-        // 5. Harvesine Formula for distance and Bearing for Arrow
-        function calculateNavigation() {
-            if (myLat === null || targetLat === null) return;
-
-            const R = 6371; // Earth radius in km
-            const dLat = (targetLat - myLat) * Math.PI / 180;
-            const dLon = (targetLong - myLong) * Math.PI / 180;
-            const a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(myLat * Math.PI / 180) * Math.cos(targetLat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            const distance = R * c;
-
-            // Update distance display
-            if (distance < 1) {
-                distanceText.textContent = `${(distance * 1000).toFixed(0)} m`;
-            } else {
-                distanceText.textContent = `${distance.toFixed(2)} km`;
-            }
-
-            // Calculate Bearing
-            const y = Math.sin(dLon) * Math.cos(targetLat * Math.PI / 180);
-            const x = Math.cos(myLat * Math.PI / 180) * Math.sin(targetLat * Math.PI / 180) -
-                      Math.sin(myLat * Math.PI / 180) * Math.cos(targetLat * Math.PI / 180) * Math.cos(dLon);
-            let bearing = Math.atan2(y, x) * 180 / Math.PI;
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Normalize bearing and subtract device heading to point arrow
-            let arrowRotation = (bearing - deviceHeading + 360) % 360;
-            arrowContainer.style.transform = `rotate(${arrowRotation}deg)`;
+            // Map Config
+            const scale = 50000; // Zoom level (pixels per coordinate degree)
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            function toCanvas(lat, lng) {
+                return {
+                    x: centerX + (lng - myPos.lng) * scale,
+                    y: centerY - (lat - myPos.lat) * scale // Y is inverted in screen coords
+                };
+            }
+
+            // 1. Draw Grid
+            ctx.strokeStyle = '#00ff41';
+            ctx.lineWidth = 0.5;
+            ctx.globalAlpha = 0.1;
+            const gridSize = 40;
+            const offsetX = (myPos.lng * scale) % gridSize;
+            const offsetY = (myPos.lat * scale) % gridSize;
+
+            for(let i = -gridSize; i < canvas.width + gridSize; i += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(i - offsetX, 0);
+                ctx.lineTo(i - offsetX, canvas.height);
+                ctx.stroke();
+            }
+            for(let j = -gridSize; j < canvas.height + gridSize; j += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, j + offsetY);
+                ctx.lineTo(canvas.width, j + offsetY);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1.0;
+
+            // 2. Draw Connection Path
+            if (targetPos && originPos) {
+                const start = toCanvas(originPos.lat, originPos.lng);
+                const end = toCanvas(targetPos.lat, targetPos.lng);
+
+                // Line from Start to End
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = '#555';
+                ctx.beginPath();
+                ctx.moveTo(start.x, start.y);
+                ctx.lineTo(end.x, end.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw Origin Marker
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(start.x, start.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillText("ORIGIN", start.x + 8, start.y);
+
+                // Draw Target Marker
+                ctx.fillStyle = '#f00';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'red';
+                ctx.beginPath();
+                ctx.arc(end.x, end.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillText("TARGET", end.x + 10, end.y);
+                ctx.shadowBlur = 0;
+            }
+
+            // 3. Draw Player Trail
+            if (points.length > 1) {
+                ctx.strokeStyle = '#00ff41';
+                ctx.globalAlpha = 0.4;
+                ctx.beginPath();
+                const first = toCanvas(points[0].lat, points[0].lng);
+                ctx.moveTo(first.x, first.y);
+                for (let p of points) {
+                    const c = toCanvas(p.lat, p.lng);
+                    ctx.lineTo(c.x, c.y);
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            }
+
+            // 4. Draw Player (Red Arrow)
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate((deviceHeading * Math.PI) / 180);
+            
+            ctx.fillStyle = '#ff3333';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff3333';
+            ctx.beginPath();
+            ctx.moveTo(0, -12); // Tip
+            ctx.lineTo(8, 8);
+            ctx.lineTo(0, 4);
+            ctx.lineTo(-8, 8);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
         }
 
-        // Initialize
-        window.onload = updateMyLocation;
-
+        window.onload = init;
     </script>
 </body>
 </html>
