@@ -3,30 +3,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Doc Level Cam</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    /* Prevent selection and scrolling for app experience */
+    /* Prevent selection and scrolling for native app feel */
     body {
       touch-action: manipulation;
       user-select: none;
       -webkit-user-select: none;
     }
     
-    /* Custom level animation smooth transitions */
+    /* Smooth transitions for level bubble */
     .bubble {
       transition: transform 0.08s ease-out;
     }
 
-    /* Shutter animation */
+    /* Shutter flash animation */
     @keyframes flash {
       0% { opacity: 1; }
       100% { opacity: 0; }
     }
     .flash-effect {
       animation: flash 0.3s ease-out forwards;
+    }
+
+    /* Support for safe area insets on modern mobile browsers */
+    .pb-safe {
+      padding-bottom: max(2rem, env(safe-area-inset-bottom));
     }
   </style>
 </head>
@@ -60,7 +65,7 @@
     <div id="flashOverlay" class="absolute inset-0 bg-white pointer-events-none opacity-0 z-30"></div>
 
     <!-- DOCUMENT ALIGNMENT FRAME -->
-    <div class="absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200" id="docBorder">
+    <div class="absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200 mb-12" id="docBorder">
       <div class="flex justify-between text-white/50 text-xs">
         <span>TOP LEFT</span>
         <span>TOP RIGHT</span>
@@ -72,7 +77,7 @@
     </div>
 
     <!-- 2D WATER / SPIRIT LEVEL OVERLAY -->
-    <div class="relative z-10 flex flex-col items-center justify-center pointer-events-none">
+    <div class="relative z-10 flex flex-col items-center justify-center pointer-events-none mb-8">
       
       <!-- Target Outer Circle -->
       <div id="levelCircle" class="w-28 h-28 border-2 border-white/60 rounded-full relative flex items-center justify-center bg-black/30 backdrop-blur-xs transition-colors duration-200 shadow-lg">
@@ -107,8 +112,8 @@
     </div>
   </main>
 
-  <!-- CONTROLS BOTTOM BAR -->
-  <footer class="relative z-20 bg-black/80 backdrop-blur-lg border-t border-gray-800 p-6 flex items-center justify-around">
+  <!-- CONTROLS BOTTOM BAR (With Extra Bottom Spacing for Mobile Nav Bars) -->
+  <footer class="relative z-20 bg-black/90 backdrop-blur-lg border-t border-gray-800 pt-5 pb-safe px-6 flex items-center justify-around">
     
     <!-- Camera Switch Toggle (Front / Back) -->
     <button onclick="toggleCamera()" class="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 hover:text-white active:scale-95 transition">
@@ -145,10 +150,10 @@
       <img id="previewImg" class="max-h-full max-w-full object-contain rounded border border-gray-800 shadow-2xl" src="" alt="Captured Doc" />
     </div>
 
-    <!-- Modal Controls (Share / Save / Retake) -->
-    <div class="p-6 bg-black/90 border-t border-gray-800 flex flex-col gap-3">
+    <!-- Modal Controls (Share / Save / Retake with extra bottom padding) -->
+    <div class="pt-5 pb-safe px-6 bg-black/95 border-t border-gray-800 flex flex-col gap-3">
       <div class="flex gap-3">
-        <!-- Share JPG Button (Native Web Share API) -->
+        <!-- Share JPG Button (Native Web Share API - No Text Caption) -->
         <button onclick="sharePhoto()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition">
           <i class="fa-solid fa-share-nodes text-lg"></i>
           <span>Share JPG</span>
@@ -284,7 +289,6 @@
 
     // Orientation handler calculation
     function handleOrientation(event) {
-      // beta = pitch (-180 to 180), gamma = roll (-90 to 90)
       let beta = event.beta || 0;  // front-back tilt
       let gamma = event.gamma || 0; // left-right tilt
 
@@ -296,8 +300,7 @@
       pitchVal.innerText = `${rawPitch.toFixed(1)}°`;
       rollVal.innerText = `${rawRoll.toFixed(1)}°`;
 
-      // Calculate 2D position for spirit bubble (max offset px from center)
-      const maxRadius = 38; // limit inside 112px circle container
+      const maxRadius = 38; // limit inside circle container
       
       // Calculate pixel displacement (1 deg ~ 3.5px displacement)
       let dx = rawRoll * 3.5;  
@@ -324,14 +327,14 @@
       if (level) {
         bubble.className = "bubble absolute w-7 h-7 rounded-full bg-emerald-500 border-2 border-white shadow-lg shadow-emerald-500/50 flex items-center justify-center";
         levelCircle.className = "w-28 h-28 border-2 border-emerald-400 rounded-full relative flex items-center justify-center bg-emerald-950/30 backdrop-blur-xs shadow-lg shadow-emerald-500/20";
-        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-emerald-400 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200 bg-emerald-500/5";
+        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-emerald-400 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200 bg-emerald-500/5 mb-12";
         levelStatus.innerText = "SURFACE PERFECTLY ALIGNED";
         levelStatus.className = "mt-1 text-xs font-bold uppercase tracking-wider text-emerald-400 drop-shadow";
         shutterInner.className = "w-full h-full bg-emerald-500 rounded-full flex items-center justify-center";
       } else {
         bubble.className = "bubble absolute w-7 h-7 rounded-full bg-red-500/90 border-2 border-white shadow-md flex items-center justify-center";
         levelCircle.className = "w-28 h-28 border-2 border-white/60 rounded-full relative flex items-center justify-center bg-black/30 backdrop-blur-xs shadow-lg";
-        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200";
+        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200 mb-12";
         levelStatus.innerText = "TILT CAMERA TO ALIGN";
         levelStatus.className = "mt-1 text-xs font-bold uppercase tracking-wider text-amber-400 drop-shadow";
         shutterInner.className = "w-full h-full bg-red-500 rounded-full flex items-center justify-center";
@@ -343,7 +346,6 @@
       pitchOffset = rawPitch + pitchOffset;
       rollOffset = rawRoll + rollOffset;
       
-      // Toast notice
       const statusText = document.getElementById('levelStatus');
       const prevText = statusText.innerText;
       statusText.innerText = "LEVEL CALIBRATED TO CURRENT TILT";
@@ -390,7 +392,7 @@
       document.getElementById('previewModal').classList.remove('flex');
     }
 
-    // 4. Share photo via Native Web Share API (WhatsApp, Drive, Gmail, etc.)
+    // 4. Share photo via Native Web Share API (Strictly file only, no text caption)
     async function sharePhoto() {
       if (!currentBlob) return;
 
@@ -400,9 +402,8 @@
       // Check browser support for sharing files
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
+          // Strictly passing files array without text or title captions
           await navigator.share({
-            title: 'Scanned Document',
-            text: 'Here is the scanned document photo.',
             files: [file]
           });
         } catch (err) {
@@ -412,13 +413,12 @@
           }
         }
       } else {
-        // Fallback for desktop or non-supported browsers
         fallbackShareOrDownload(file);
       }
     }
 
     function fallbackShareOrDownload(file) {
-      alert("Direct app-sharing is not natively supported by this browser. Initiating direct JPEG download instead.");
+      alert("Direct app-sharing is not natively supported by this browser/device. Initiating direct JPEG download instead.");
       downloadPhoto();
     }
 
