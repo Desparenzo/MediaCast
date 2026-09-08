@@ -1,754 +1,439 @@
+```html
 <!DOCTYPE html>
-<html lang="en" class="dark h-full bg-slate-950 text-slate-100">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DECIMEN - Fountain QR File Transfer</title>
-  
-  <!-- Tailwind CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Doc Level Cam</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- QR Code Generator & jsQR Decoder Libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-
-  <!-- Google Fonts for Cyber/Technical Aesthetic -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            amber: {
-              400: '#fbbf24',
-              500: '#f59e0b',
-            },
-            cyan: {
-              400: '#22d3ee',
-              500: '#06b6d4',
-            }
-          },
-          fontFamily: {
-            mono: ['"Share Tech Mono"', 'monospace'],
-            sans: ['Inter', 'sans-serif'],
-          }
-        }
-      }
-    }
-  </script>
-
   <style>
-    /* Custom Scrollbar & UI Tweaks */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #090d16; }
-    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    /* Prevent selection and scrolling for app experience */
+    body {
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
     
-    .hud-box {
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid rgba(51, 65, 85, 0.5);
-      backdrop-filter: blur(8px);
+    /* Custom level animation smooth transitions */
+    .bubble {
+      transition: transform 0.08s ease-out;
     }
-    .grid-bg {
-      background-image: radial-gradient(rgba(51, 65, 85, 0.3) 1px, transparent 1px);
-      background-size: 16px 16px;
+
+    /* Shutter animation */
+    @keyframes flash {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
     }
-    /* CRT Scanline effect overlay */
-    .scanlines {
-      background: linear-gradient(
-        rgba(18, 16, 16, 0) 50%, 
-        rgba(0, 0, 0, 0.25) 50%
-      ), linear-gradient(
-        90deg,
-        rgba(255, 0, 0, 0.03),
-        rgba(0, 255, 0, 0.01),
-        rgba(0, 0, 255, 0.03)
-      );
-      background-size: 100% 4px, 6px 100%;
-      pointer-events: none;
+    .flash-effect {
+      animation: flash 0.3s ease-out forwards;
     }
   </style>
 </head>
+<body class="bg-black text-white h-screen w-screen overflow-hidden flex flex-col justify-between select-none">
 
-<body class="h-full flex flex-col font-sans grid-bg select-none antialiased">
-  <!-- Main Container -->
-  <div class="max-w-md w-full mx-auto h-full flex flex-col bg-slate-900 border-x border-slate-800 shadow-2xl relative overflow-hidden">
+  <!-- TOP BAR / HEADER -->
+  <header class="relative z-20 flex items-center justify-between p-4 bg-black/60 backdrop-blur-md border-b border-gray-800">
+    <div class="flex items-center space-x-2">
+      <i class="fa-solid font-bold text-emerald-400 text-xl fa-camera font-serif"></i>
+      <h1 class="font-bold text-lg tracking-wide">DocLevel Cam</h1>
+    </div>
     
-    <!-- Top Header Bar -->
-    <header class="p-3 border-b border-slate-800 bg-slate-950/90 flex items-center justify-between z-10">
-      <div class="flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
-        <h1 class="font-mono text-sm tracking-widest text-amber-500 font-bold uppercase">
-          DECIMEN <span class="text-slate-400 font-normal text-xs">— Fountain QR Transfer</span>
-        </h1>
-      </div>
-      
-      <!-- Mode Toggle Switch -->
-      <div class="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/60 text-xs font-mono">
-        <button id="modeRxBtn" onclick="switchMode('rx')" class="px-2.5 py-1 rounded-md font-bold transition-all bg-amber-500 text-slate-950 shadow">
-          <i class="fa-solid fa-camera mr-1 text-[10px]"></i> RECEIVE
-        </button>
-        <button id="modeTxBtn" onclick="switchMode('tx')" class="px-2.5 py-1 rounded-md font-bold transition-all text-slate-400 hover:text-slate-200">
-          <i class="fa-solid fa-qrcode mr-1 text-[10px]"></i> SEND
-        </button>
-      </div>
-    </header>
-
-    <!-- CONTENT AREA -->
-    <main class="flex-1 flex flex-col p-3 overflow-y-auto space-y-3 z-10 relative">
-
-      <!-- TELEMETRY HUD DASHBOARD (Matches exact screenshot layout) -->
-      <div class="hud-box rounded-xl p-3 border border-slate-800 text-slate-300 font-mono text-xs">
-        
-        <!-- Row 1: Capture & Decode FPS -->
-        <div class="grid grid-cols-2 gap-3 mb-2.5 border-b border-slate-800/80 pb-2">
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">CAPTURE FPS</div>
-            <div id="statCapFps" class="text-xl font-bold text-slate-100">0</div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">DECODE FPS</div>
-            <div id="statDecFps" class="text-xl font-bold text-amber-400">0.0</div>
-          </div>
-        </div>
-
-        <!-- Row 2: Lock Status & Dropped -->
-        <div class="grid grid-cols-2 gap-3 mb-2.5 border-b border-slate-800/80 pb-2">
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">LOCK</div>
-            <div id="statLock" class="text-sm font-bold text-emerald-400 tracking-wider uppercase flex items-center gap-1.5">
-              <span id="lockDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span id="lockText">SEARCHING</span>
-            </div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">DROPPED</div>
-            <div id="statDropped" class="text-base font-bold text-slate-300">0</div>
-          </div>
-        </div>
-
-        <!-- Row 3: Goodput & Elapsed -->
-        <div class="grid grid-cols-2 gap-3 mb-2.5 border-b border-slate-800/80 pb-2">
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">GOODPUT</div>
-            <div class="text-base font-bold text-amber-400">
-              <span id="statGoodput">0.0</span> <span class="text-xs font-normal text-amber-500/80">KB/s</span>
-            </div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">ELAPSED</div>
-            <div class="text-base font-bold text-slate-200">
-              <span id="statElapsed">0</span> <span class="text-xs font-normal text-slate-400">s</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 4: Frames & Session -->
-        <div class="grid grid-cols-2 gap-3 mb-2.5 border-b border-slate-800/80 pb-2">
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">FRAMES NEW/DUP/RED</div>
-            <div id="statFrames" class="text-sm font-bold text-slate-200">0/0/0</div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">SESSION</div>
-            <div id="statSession" class="text-sm font-bold text-slate-400">----</div>
-          </div>
-        </div>
-
-        <!-- Row 5: Block Len & Payload -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">BLOCK LEN</div>
-            <div class="text-sm font-bold text-slate-200">
-              <span id="statBlockLen">0</span> <span class="text-[10px] text-slate-400">B</span>
-            </div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-400 tracking-wider uppercase">PAYLOAD</div>
-            <div class="text-sm font-bold text-slate-200">
-              <span id="statPayload">0</span> <span class="text-[10px] text-slate-400">KB</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- PROGRESS BAR & RECV BADGE -->
-      <div class="space-y-1">
-        <div class="flex justify-between items-center font-mono text-[11px] text-slate-400 px-0.5">
-          <span id="progressLabel"><i class="fa-solid fa-radar text-amber-500 mr-1"></i> SCANNING OPTICAL STREAM</span>
-          <span id="statRateDetail" class="text-slate-300">0 FPS • 0 bytes/frame</span>
-        </div>
-        
-        <div class="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800 p-0.5 relative">
-          <div id="progressBar" class="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 rounded-full transition-all duration-150 w-0"></div>
-        </div>
-      </div>
-
-      <!-- VIEWPORT PANELS (RECEIVER / SENDER) -->
-      
-      <!-- RECEIVER MODE PANEL -->
-      <div id="rxPanel" class="flex-1 flex flex-col space-y-3">
-        <!-- Camera Viewport Box -->
-        <div class="relative flex-1 bg-black rounded-xl overflow-hidden border border-slate-800 min-h-[260px] flex items-center justify-center group">
-          
-          <video id="videoPreview" playsinline autoplay muted class="w-full h-full object-cover"></video>
-          <canvas id="scanCanvas" class="hidden"></canvas>
-          
-          <!-- Scanner Target Reticle / Finder Box -->
-          <div id="reticleBox" class="absolute inset-8 border-2 border-dashed border-amber-500/40 rounded-lg pointer-events-none flex flex-col justify-between p-2">
-            <div class="flex justify-between">
-              <div class="w-4 h-4 border-t-2 border-l-2 border-amber-400"></div>
-              <div class="w-4 h-4 border-t-2 border-r-2 border-amber-400"></div>
-            </div>
-            <div class="text-center">
-              <span class="bg-slate-950/80 px-2 py-0.5 rounded text-[10px] font-mono text-amber-400 border border-amber-500/30">
-                ALIGN ANIMATED QR CODE HERE
-              </span>
-            </div>
-            <div class="flex justify-between">
-              <div class="w-4 h-4 border-b-2 border-l-2 border-amber-400"></div>
-              <div class="w-4 h-4 border-b-2 border-r-2 border-amber-400"></div>
-            </div>
-          </div>
-
-          <!-- Camera Placeholder / Permission Prompt -->
-          <div id="cameraPrompt" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-4 text-center z-20">
-            <div class="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-amber-400 text-2xl mb-3 border border-slate-700">
-              <i class="fa-solid fa-camera"></i>
-            </div>
-            <p class="text-xs text-slate-300 font-medium mb-3 max-w-xs">
-              Optical file receiver requires camera access to read data frames.
-            </p>
-            <button onclick="startCamera()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow transition-all flex items-center gap-2">
-              <i class="fa-solid fa-power-off"></i> START CAMERA SCANNER
-            </button>
-          </div>
-        </div>
-
-        <!-- Download Finished Action Box -->
-        <div id="downloadBox" class="hidden hud-box p-3 rounded-xl border border-emerald-500/40 bg-emerald-950/20 text-center space-y-2">
-          <div class="text-emerald-400 font-mono text-xs font-bold flex items-center justify-center gap-2">
-            <i class="fa-solid fa-circle-check"></i> FILE RECONSTRUCTED SUCCESSFULLY!
-          </div>
-          <p id="downloadFileInfo" class="text-xs text-slate-300 font-mono">Filename: payload.bin (0 KB)</p>
-          <button id="downloadBtn" class="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2">
-            <i class="fa-solid fa-download"></i> SAVE RECEIVED FILE
-          </button>
-        </div>
-      </div>
-
-
-      <!-- SENDER MODE PANEL -->
-      <div id="txPanel" class="hidden flex-1 flex flex-col space-y-3">
-        <!-- QR Display Canvas Card -->
-        <div class="flex-1 bg-white rounded-xl p-3 border border-slate-800 flex flex-col items-center justify-center relative min-h-[260px]">
-          <div id="qrcode" class="flex items-center justify-center"></div>
-          
-          <div id="txPlaceholder" class="text-center p-4 text-slate-500 font-mono text-xs">
-            <i class="fa-solid fa-file-arrow-up text-3xl text-slate-400 mb-2 block"></i>
-            Select a file below to begin optical transmission stream
-          </div>
-        </div>
-
-        <!-- Controls Card -->
-        <div class="hud-box p-3 rounded-xl space-y-2.5">
-          <label class="block">
-            <span class="text-[11px] font-mono text-slate-400 uppercase tracking-wider block mb-1">Select File to Transmit</span>
-            <input type="file" id="fileInput" onchange="handleFileSelect(event)" class="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer border border-slate-700 rounded-lg bg-slate-950">
-          </label>
-
-          <div class="grid grid-cols-2 gap-2 text-xs font-mono">
-            <div>
-              <label class="text-[10px] text-slate-400 block mb-1">CHUNK SIZE (BYTES)</label>
-              <select id="chunkSizeSelect" onchange="updateTxConfig()" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-amber-400">
-                <option value="150">150 B (Fast scanning)</option>
-                <option value="300" selected>300 B (Standard)</option>
-                <option value="600">600 B (High density)</option>
-                <option value="1000">1000 B (Ultra high density)</option>
-              </select>
-            </div>
-            <div>
-              <label class="text-[10px] text-slate-400 block mb-1">TARGET FPS</label>
-              <select id="fpsSelect" onchange="updateTxConfig()" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-amber-400">
-                <option value="5">5 FPS</option>
-                <option value="10" selected>10 FPS</option>
-                <option value="15">15 FPS</option>
-                <option value="25">25 FPS</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Transmission Play/Pause Button -->
-          <button id="txToggleBtn" disabled onclick="toggleTransmission()" class="w-full py-2 bg-slate-800 text-slate-500 font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 cursor-not-allowed">
-            <i class="fa-solid fa-play"></i> START TRANSMITTING
-          </button>
-        </div>
-      </div>
-
-    </main>
-
-    <!-- Footer / Demo Helper -->
-    <footer class="p-2 border-t border-slate-800/80 bg-slate-950/90 text-[10px] font-mono text-slate-500 flex justify-between items-center z-10">
-      <span>DECIMEN v1.0 • Air-Gap Protocol</span>
-      <button onclick="loadSampleFile()" class="text-amber-500/80 hover:text-amber-400 underline">
-        Load Demo Payload
+    <!-- Calibration / Sensor Request Button -->
+    <div class="flex items-center gap-2">
+      <button id="sensorBtn" onclick="requestSensorPermission()" class="hidden text-xs bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium px-3 py-1.5 rounded-full flex items-center gap-1">
+        <i class="fa-solid fa-compass"></i> Enable Level
       </button>
-    </footer>
+      <button id="calibrateBtn" onclick="calibrateSensors()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-full flex items-center gap-1">
+        <i class="fa-solid fa-arrows-to-dot"></i> Calibrate
+      </button>
+    </div>
+  </header>
 
-    <!-- Overlay scanline shader effect -->
-    <div class="scanlines absolute inset-0 z-0"></div>
+  <!-- CAMERA / VIEWFINDER CONTAINER -->
+  <main class="relative flex-1 w-full flex items-center justify-center overflow-hidden bg-gray-950">
+    
+    <!-- Live Video View -->
+    <video id="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+    
+    <!-- Flash Overlay Effect -->
+    <div id="flashOverlay" class="absolute inset-0 bg-white pointer-events-none opacity-0 z-30"></div>
+
+    <!-- DOCUMENT ALIGNMENT FRAME -->
+    <div class="absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200" id="docBorder">
+      <div class="flex justify-between text-white/50 text-xs">
+        <span>TOP LEFT</span>
+        <span>TOP RIGHT</span>
+      </div>
+      <div class="flex justify-between text-white/50 text-xs">
+        <span>BOTTOM LEFT</span>
+        <span>BOTTOM RIGHT</span>
+      </div>
+    </div>
+
+    <!-- 2D WATER / SPIRIT LEVEL OVERLAY -->
+    <div class="relative z-10 flex flex-col items-center justify-center pointer-events-none">
+      
+      <!-- Target Outer Circle -->
+      <div id="levelCircle" class="w-28 h-28 border-2 border-white/60 rounded-full relative flex items-center justify-center bg-black/30 backdrop-blur-xs transition-colors duration-200 shadow-lg">
+        
+        <!-- Crosshairs -->
+        <div class="absolute w-full h-[1px] bg-white/30"></div>
+        <div class="absolute h-full w-[1px] bg-white/30"></div>
+
+        <!-- Target Dead Center Circle -->
+        <div id="targetCenter" class="w-8 h-8 rounded-full border-2 border-emerald-400/80 flex items-center justify-center">
+          <div class="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+        </div>
+
+        <!-- Moving Bubble Indicator -->
+        <div id="bubble" class="bubble absolute w-7 h-7 rounded-full bg-red-500/80 border-2 border-white shadow-md flex items-center justify-center" style="transform: translate(0px, 0px);">
+          <div class="w-2 h-2 rounded-full bg-white/80"></div>
+        </div>
+      </div>
+
+      <!-- Live Tilt Diagnostics -->
+      <div id="tiltInfo" class="mt-3 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-xs font-mono border border-white/10 text-gray-200 shadow-md">
+        Pitch: <span id="pitchVal" class="text-amber-400">0.0°</span> | Roll: <span id="rollVal" class="text-amber-400">0.0°</span>
+      </div>
+      <div id="levelStatus" class="mt-1 text-xs font-bold uppercase tracking-wider text-amber-400 drop-shadow">
+        Tilt Camera to Align
+      </div>
+    </div>
+
+    <!-- Permission Warning banner if sensors are blocked -->
+    <div id="permissionWarning" class="hidden absolute top-4 inset-x-4 bg-amber-500/90 text-black p-3 rounded-lg text-xs font-medium text-center shadow-lg z-20">
+      Motion sensors not active. Tap "Enable Level" top right or move device to activate water level.
+    </div>
+  </main>
+
+  <!-- CONTROLS BOTTOM BAR -->
+  <footer class="relative z-20 bg-black/80 backdrop-blur-lg border-t border-gray-800 p-6 flex items-center justify-around">
+    
+    <!-- Camera Switch Toggle (Front / Back) -->
+    <button onclick="toggleCamera()" class="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 hover:text-white active:scale-95 transition">
+      <i class="fa-solid fa-camera-rotate text-lg"></i>
+    </button>
+
+    <!-- Main Shutter Capture Button -->
+    <button id="shutterBtn" onclick="takePhoto()" class="w-20 h-20 rounded-full border-4 border-white p-1 flex items-center justify-center active:scale-95 transition shadow-lg">
+      <div id="shutterInner" class="w-full h-full bg-red-500 rounded-full flex items-center justify-center">
+        <i class="fa-solid fa-camera text-2xl text-white"></i>
+      </div>
+    </button>
+
+    <!-- Flash Toggle -->
+    <button id="torchBtn" onclick="toggleTorch()" class="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 hover:text-white active:scale-95 transition">
+      <i id="torchIcon" class="fa-solid fa-bolt-slash text-lg"></i>
+    </button>
+  </footer>
+
+  <!-- PREVIEW & EXPORT MODAL -->
+  <div id="previewModal" class="fixed inset-0 bg-black z-50 hidden flex-col justify-between">
+    <!-- Modal Header -->
+    <div class="p-4 bg-black/80 border-b border-gray-800 flex justify-between items-center">
+      <h2 class="font-bold text-emerald-400 flex items-center gap-2">
+        <i class="fa-solid fa-circle-check"></i> Scanned Document
+      </h2>
+      <button onclick="closePreview()" class="text-gray-400 hover:text-white p-2 text-xl">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Image Preview Area -->
+    <div class="flex-1 bg-gray-950 p-4 flex items-center justify-center overflow-hidden">
+      <img id="previewImg" class="max-h-full max-w-full object-contain rounded border border-gray-800 shadow-2xl" src="" alt="Captured Doc" />
+    </div>
+
+    <!-- Modal Controls (Share / Save / Retake) -->
+    <div class="p-6 bg-black/90 border-t border-gray-800 flex flex-col gap-3">
+      <div class="flex gap-3">
+        <!-- Share JPG Button (Native Web Share API) -->
+        <button onclick="sharePhoto()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition">
+          <i class="fa-solid fa-share-nodes text-lg"></i>
+          <span>Share JPG</span>
+        </button>
+
+        <!-- Direct Download Button -->
+        <button onclick="downloadPhoto()" class="flex-1 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 flex items-center justify-center gap-2 transition">
+          <i class="fa-solid fa-download text-lg"></i>
+          <span>Save File</span>
+        </button>
+      </div>
+
+      <!-- Retake Button -->
+      <button onclick="closePreview()" class="w-full bg-transparent hover:bg-white/5 text-gray-400 font-medium py-2 rounded-lg text-sm transition">
+        <i class="fa-solid fa-arrow-left mr-1"></i> Retake / Dismiss
+      </button>
+    </div>
   </div>
 
-  <!-- JAVASCRIPT LOGIC ENGINE -->
+  <!-- Hidden Canvas for full resolution capture -->
+  <canvas id="canvas" class="hidden"></canvas>
+
+  <!-- APP JAVASCRIPT LOGIC -->
   <script>
-    // System State Variables
-    let currentMode = 'rx'; // 'rx' (Receiver) or 'tx' (Transmitter)
-    
-    // Receiver State
-    let videoStream = null;
-    let rxScanning = false;
-    let rxAnimationId = null;
-    let rxStartTime = null;
-    let rxLastFrameTime = performance.now();
-    let rxFramesCaptured = 0;
-    let rxFramesDecoded = 0;
-    let rxDecodedTimestamps = [];
-    let rxCapturedTimestamps = [];
-    
-    // Receiver Data Assembly
-    let rxSessionId = null;
-    let rxTotalBlocks = 0;
-    let rxBlockLen = 0;
-    let rxFileName = '';
-    let rxFileType = '';
-    let rxFileSize = 0;
-    let rxReceivedBlocks = new Map(); // index -> Uint8Array
-    let rxDupFrames = 0;
-    let rxDroppedFrames = 0;
-    let rxRedundantFrames = 0;
-    let rxLastSeqSeen = -1;
+    // State variables
+    let currentStream = null;
+    let facingMode = 'environment'; // Default back camera
+    let torchOn = false;
+    let currentBlob = null;
+    let rawPitch = 0;
+    let rawRoll = 0;
+    let pitchOffset = 0;
+    let rollOffset = 0;
+    let isAligned = false;
 
-    // Transmitter State
-    let txFileBuffer = null;
-    let txFileName = '';
-    let txFileType = '';
-    let txChunks = [];
-    let txSessionId = '';
-    let txIntervalId = null;
-    let txCurrentChunkIdx = 0;
-    let txIsPlaying = false;
-    let txQrGenerator = null;
+    const TOLERANCE_DEG = 2.5; // Degree tolerance for green light level match
 
-    // DOM Elements
-    const modeRxBtn = document.getElementById('modeRxBtn');
-    const modeTxBtn = document.getElementById('modeTxBtn');
-    const rxPanel = document.getElementById('rxPanel');
-    const txPanel = document.getElementById('txPanel');
+    // Elements
+    const video = document.getElementById('video');
+    const bubble = document.getElementById('bubble');
+    const levelCircle = document.getElementById('levelCircle');
+    const docBorder = document.getElementById('docBorder');
+    const levelStatus = document.getElementById('levelStatus');
+    const pitchVal = document.getElementById('pitchVal');
+    const rollVal = document.getElementById('rollVal');
+    const shutterInner = document.getElementById('shutterInner');
 
-    // Stats Elements
-    const statCapFps = document.getElementById('statCapFps');
-    const statDecFps = document.getElementById('statDecFps');
-    const statLock = document.getElementById('statLock');
-    const lockDot = document.getElementById('lockDot');
-    const lockText = document.getElementById('lockText');
-    const statDropped = document.getElementById('statDropped');
-    const statGoodput = document.getElementById('statGoodput');
-    const statElapsed = document.getElementById('statElapsed');
-    const statFrames = document.getElementById('statFrames');
-    const statSession = document.getElementById('statSession');
-    const statBlockLen = document.getElementById('statBlockLen');
-    const statPayload = document.getElementById('statPayload');
-    const progressBar = document.getElementById('progressBar');
-    const progressLabel = document.getElementById('progressLabel');
-    const statRateDetail = document.getElementById('statRateDetail');
+    // Startup Camera Init
+    window.onload = () => {
+      initCamera();
+      setupMotionSensors();
+    };
 
-    // Download box
-    const downloadBox = document.getElementById('downloadBox');
-    const downloadFileInfo = document.getElementById('downloadFileInfo');
-    const downloadBtn = document.getElementById('downloadBtn');
-
-    // Switch between Transmitter and Receiver modes
-    function switchMode(mode) {
-      currentMode = mode;
-      resetStats();
-
-      if (mode === 'rx') {
-        modeRxBtn.className = "px-2.5 py-1 rounded-md font-bold transition-all bg-amber-500 text-slate-950 shadow";
-        modeTxBtn.className = "px-2.5 py-1 rounded-md font-bold transition-all text-slate-400 hover:text-slate-200";
-        rxPanel.classList.remove('hidden');
-        txPanel.classList.add('hidden');
-        stopTransmission();
-      } else {
-        modeTxBtn.className = "px-2.5 py-1 rounded-md font-bold transition-all bg-amber-500 text-slate-950 shadow";
-        modeRxBtn.className = "px-2.5 py-1 rounded-md font-bold transition-all text-slate-400 hover:text-slate-200";
-        txPanel.classList.remove('hidden');
-        rxPanel.classList.add('hidden');
-        stopCamera();
-      }
-    }
-
-    function resetStats() {
-      statCapFps.textContent = '0';
-      statDecFps.textContent = '0.0';
-      setLockStatus(false);
-      statDropped.textContent = '0';
-      statGoodput.textContent = '0.0';
-      statElapsed.textContent = '0';
-      statFrames.textContent = '0/0/0';
-      statSession.textContent = '----';
-      statBlockLen.textContent = '0';
-      statPayload.textContent = '0';
-      progressBar.style.width = '0%';
-      downloadBox.classList.add('hidden');
-    }
-
-    function setLockStatus(locked) {
-      if (locked) {
-        statLock.className = "text-sm font-bold text-emerald-400 tracking-wider uppercase flex items-center gap-1.5";
-        lockDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
-        lockText.textContent = "LOCK";
-      } else {
-        statLock.className = "text-sm font-bold text-amber-500/70 tracking-wider uppercase flex items-center gap-1.5";
-        lockDot.className = "w-2 h-2 rounded-full bg-amber-500/50";
-        lockText.textContent = "SEARCHING";
-      }
-    }
-
-    // ==========================================
-    // RECEIVER (SCANNER) IMPLEMENTATION
-    // ==========================================
-    async function startCamera() {
-      const video = document.getElementById('videoPreview');
-      const cameraPrompt = document.getElementById('cameraPrompt');
-
-      try {
-        videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-        video.srcObject = videoStream;
-        await video.play();
-        cameraPrompt.classList.add('hidden');
-        rxScanning = true;
-        rxStartTime = performance.now();
-        requestAnimationFrame(scanLoop);
-      } catch (err) {
-        alert("Camera error: " + err.message + ". Make sure camera permissions are granted.");
-      }
-    }
-
-    function stopCamera() {
-      rxScanning = false;
-      if (rxAnimationId) cancelAnimationFrame(rxAnimationId);
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
-        videoStream = null;
-      }
-      document.getElementById('cameraPrompt').classList.remove('hidden');
-    }
-
-    function scanLoop(timestamp) {
-      if (!rxScanning) return;
-
-      const video = document.getElementById('videoPreview');
-      const canvas = document.getElementById('scanCanvas');
-      const ctx = canvas.getContext('2d');
-
-      // Calculate Capture FPS
-      rxCapturedTimestamps.push(timestamp);
-      rxCapturedTimestamps = rxCapturedTimestamps.filter(t => timestamp - t <= 1000);
-      statCapFps.textContent = rxCapturedTimestamps.length;
-
-      // Elapsed Time
-      if (rxStartTime) {
-        const elapsedSec = Math.floor((timestamp - rxStartTime) / 1000);
-        statElapsed.textContent = elapsedSec;
+    // 1. Initialize Camera
+    async function initCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
       }
 
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-
-        if (code && code.data) {
-          processFrameData(code.data, timestamp);
-        } else {
-          // If no lock for > 2 seconds
-          if (rxDecodedTimestamps.length > 0 && timestamp - rxDecodedTimestamps[rxDecodedTimestamps.length - 1] > 2000) {
-            setLockStatus(false);
-          }
-        }
-      }
-
-      // Update Decode FPS tracking
-      rxDecodedTimestamps = rxDecodedTimestamps.filter(t => timestamp - t <= 1000);
-      statDecFps.textContent = (rxDecodedTimestamps.length).toFixed(1);
-
-      rxAnimationId = requestAnimationFrame(scanLoop);
-    }
-
-    function processFrameData(payloadStr, timestamp) {
-      // Protocol format: DEC1|SessionID|BlockIndex|TotalBlocks|FileName|FileType|FileSize|Base64Chunk
-      try {
-        const parts = payloadStr.split('|');
-        if (parts[0] !== 'DEC1' || parts.length < 8) return;
-
-        rxDecodedTimestamps.push(timestamp);
-        setLockStatus(true);
-
-        const sessionId = parts[1];
-        const blockIdx = parseInt(parts[2]);
-        const totalBlocks = parseInt(parts[3]);
-        const fileName = decodeURIComponent(parts[4]);
-        const fileType = parts[5];
-        const fileSize = parseInt(parts[6]);
-        const b64Data = parts[7];
-
-        // New Session Initialization
-        if (rxSessionId !== sessionId) {
-          rxSessionId = sessionId;
-          rxTotalBlocks = totalBlocks;
-          rxFileName = fileName;
-          rxFileType = fileType;
-          rxFileSize = fileSize;
-          rxReceivedBlocks.clear();
-          rxDupFrames = 0;
-          rxDroppedFrames = 0;
-          rxRedundantFrames = 0;
-          rxLastSeqSeen = -1;
-
-          statSession.textContent = sessionId;
-          statPayload.textContent = (fileSize / 1024).toFixed(1);
-        }
-
-        // Detect sequence drops
-        if (rxLastSeqSeen !== -1 && blockIdx > rxLastSeqSeen + 1) {
-          rxDroppedFrames += (blockIdx - rxLastSeqSeen - 1);
-        }
-        rxLastSeqSeen = blockIdx;
-        statDropped.textContent = rxDroppedFrames;
-
-        // Store block if not duplicate
-        if (!rxReceivedBlocks.has(blockIdx)) {
-          const binaryStr = atob(b64Data);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-          rxReceivedBlocks.set(blockIdx, bytes);
-          statBlockLen.textContent = bytes.length;
-          statRateDetail.textContent = `${statDecFps.textContent} FPS • ${bytes.length} bytes/frame`;
-        } else {
-          rxDupFrames++;
-        }
-
-        // Frame statistics update: NEW / DUP / RED
-        statFrames.textContent = `${rxReceivedBlocks.size}/${rxDupFrames}/${rxRedundantFrames}`;
-
-        // Progress Calculation
-        const pct = Math.min(100, Math.round((rxReceivedBlocks.size / rxTotalBlocks) * 100));
-        progressBar.style.width = pct + '%';
-        progressLabel.innerHTML = `<i class="fa-solid fa-radar text-amber-500 mr-1"></i> RECEIVING: ${pct}% (${rxReceivedBlocks.size}/${rxTotalBlocks})`;
-
-        // Goodput Calculation (KB/s)
-        const elapsedSec = (performance.now() - rxStartTime) / 1000;
-        if (elapsedSec > 0) {
-          let totalBytesReceived = 0;
-          rxReceivedBlocks.forEach(b => totalBytesReceived += b.length);
-          const kbps = (totalBytesReceived / 1024) / elapsedSec;
-          statGoodput.textContent = kbps.toFixed(1);
-        }
-
-        // Complete Reconstruction Check
-        if (rxReceivedBlocks.size === rxTotalBlocks) {
-          finishReceiving();
-        }
-
-      } catch (err) {
-        console.warn("Frame parse error:", err);
-      }
-    }
-
-    function finishReceiving() {
-      // Reassemble chunks in order
-      const blobParts = [];
-      for (let i = 0; i < rxTotalBlocks; i++) {
-        blobParts.push(rxReceivedBlocks.get(i));
-      }
-
-      const blob = new Blob(blobParts, { type: rxFileType || 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-
-      downloadFileInfo.textContent = `File: ${rxFileName} (${(rxFileSize / 1024).toFixed(1)} KB)`;
-      downloadBtn.onclick = () => {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = rxFileName;
-        a.click();
+      const constraints = {
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
       };
 
-      downloadBox.classList.remove('hidden');
-      progressLabel.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> RECEIVE COMPLETE`;
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+      } catch (err) {
+        console.error("Camera access error: ", err);
+        alert("Unable to access camera. Please allow camera permissions in your browser settings.");
+      }
     }
 
-    // ==========================================
-    // TRANSMITTER (SENDER) IMPLEMENTATION
-    // ==========================================
-    function handleFileSelect(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      prepareTransmission(file);
+    // Toggle Camera (Front / Rear)
+    function toggleCamera() {
+      facingMode = facingMode === 'environment' ? 'user' : 'environment';
+      initCamera();
     }
 
-    function prepareTransmission(file) {
-      txFileName = file.name;
-      txFileType = file.type;
+    // Toggle Flash/Torch if supported
+    async function toggleTorch() {
+      if (!currentStream) return;
+      const track = currentStream.getVideoTracks()[0];
+      try {
+        const capabilities = track.getCapabilities();
+        if (capabilities.torch) {
+          torchOn = !torchOn;
+          await track.applyConstraints({
+            advanced: [{ torch: torchOn }]
+          });
+          document.getElementById('torchIcon').className = torchOn ? 
+            "fa-solid fa-bolt text-amber-400 text-lg" : "fa-solid fa-bolt-slash text-lg";
+        } else {
+          alert("Flash/Torch is not supported on this camera device.");
+        }
+      } catch (e) {
+        alert("Torch control not accessible.");
+      }
+    }
+
+    // 2. Motion Sensor Setup (Water Level Logic)
+    function setupMotionSensors() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+ permission flow
+        document.getElementById('sensorBtn').classList.remove('hidden');
+      } else if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleOrientation);
+      } else {
+        document.getElementById('permissionWarning').classList.remove('hidden');
+        document.getElementById('permissionWarning').innerText = "Device orientation sensors not supported on this device.";
+      }
+    }
+
+    function requestSensorPermission() {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+              document.getElementById('sensorBtn').classList.add('hidden');
+              document.getElementById('permissionWarning').classList.add('hidden');
+            } else {
+              alert('Motion sensor permission denied.');
+            }
+          })
+          .catch(console.error);
+      }
+    }
+
+    // Orientation handler calculation
+    function handleOrientation(event) {
+      // beta = pitch (-180 to 180), gamma = roll (-90 to 90)
+      let beta = event.beta || 0;  // front-back tilt
+      let gamma = event.gamma || 0; // left-right tilt
+
+      // Calibrate baseline adjustment
+      rawPitch = beta - pitchOffset;
+      rawRoll = gamma - rollOffset;
+
+      // Update Pitch & Roll UI elements
+      pitchVal.innerText = `${rawPitch.toFixed(1)}°`;
+      rollVal.innerText = `${rawRoll.toFixed(1)}°`;
+
+      // Calculate 2D position for spirit bubble (max offset px from center)
+      const maxRadius = 38; // limit inside 112px circle container
       
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        txFileBuffer = new Uint8Array(evt.target.result);
-        sliceAndInitTx();
-      };
-      reader.readAsArrayBuffer(file);
+      // Calculate pixel displacement (1 deg ~ 3.5px displacement)
+      let dx = rawRoll * 3.5;  
+      let dy = rawPitch * 3.5; 
+
+      // Clamp bubble to circle bounds
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+
+      // Update Bubble Position
+      bubble.style.transform = `translate(${dx}px, ${dy}px)`;
+
+      // Check alignment within tolerance
+      const isLevel = Math.abs(rawPitch) <= TOLERANCE_DEG && Math.abs(rawRoll) <= TOLERANCE_DEG;
+      updateLevelUI(isLevel);
     }
 
-    function sliceAndInitTx() {
-      const chunkSize = parseInt(document.getElementById('chunkSizeSelect').value);
-      txChunks = [];
-      txSessionId = Math.random().toString(36).substring(2, 6);
+    // Update level visuals (Green when parallel, Red when tilted)
+    function updateLevelUI(level) {
+      isAligned = level;
+      if (level) {
+        bubble.className = "bubble absolute w-7 h-7 rounded-full bg-emerald-500 border-2 border-white shadow-lg shadow-emerald-500/50 flex items-center justify-center";
+        levelCircle.className = "w-28 h-28 border-2 border-emerald-400 rounded-full relative flex items-center justify-center bg-emerald-950/30 backdrop-blur-xs shadow-lg shadow-emerald-500/20";
+        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-emerald-400 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200 bg-emerald-500/5";
+        levelStatus.innerText = "SURFACE PERFECTLY ALIGNED";
+        levelStatus.className = "mt-1 text-xs font-bold uppercase tracking-wider text-emerald-400 drop-shadow";
+        shutterInner.className = "w-full h-full bg-emerald-500 rounded-full flex items-center justify-center";
+      } else {
+        bubble.className = "bubble absolute w-7 h-7 rounded-full bg-red-500/90 border-2 border-white shadow-md flex items-center justify-center";
+        levelCircle.className = "w-28 h-28 border-2 border-white/60 rounded-full relative flex items-center justify-center bg-black/30 backdrop-blur-xs shadow-lg";
+        docBorder.className = "absolute inset-8 md:inset-16 border-2 border-dashed border-white/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 transition-colors duration-200";
+        levelStatus.innerText = "TILT CAMERA TO ALIGN";
+        levelStatus.className = "mt-1 text-xs font-bold uppercase tracking-wider text-amber-400 drop-shadow";
+        shutterInner.className = "w-full h-full bg-red-500 rounded-full flex items-center justify-center";
+      }
+    }
 
-      const totalSize = txFileBuffer.length;
-      let offset = 0;
-      let blockIdx = 0;
+    // Calibrate baseline offset to zero level for flat surface
+    function calibrateSensors() {
+      pitchOffset = rawPitch + pitchOffset;
+      rollOffset = rawRoll + rollOffset;
+      
+      // Toast notice
+      const statusText = document.getElementById('levelStatus');
+      const prevText = statusText.innerText;
+      statusText.innerText = "LEVEL CALIBRATED TO CURRENT TILT";
+      statusText.className = "mt-1 text-xs font-bold uppercase tracking-wider text-cyan-400";
+      setTimeout(() => {
+        statusText.innerText = prevText;
+      }, 1800);
+    }
 
-      while (offset < totalSize) {
-        const end = Math.min(offset + chunkSize, totalSize);
-        const chunkBytes = txFileBuffer.slice(offset, end);
+    // 3. Take Photo & Process JPG
+    function takePhoto() {
+      // Trigger camera flash visual
+      const flashOverlay = document.getElementById('flashOverlay');
+      flashOverlay.classList.remove('flash-effect');
+      void flashOverlay.offsetWidth; // trigger reflow
+      flashOverlay.classList.add('flash-effect');
+
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
+
+      // Set canvas size equal to high-res video feed
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+
+      // Draw active frame to canvas
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert Canvas to JPG Blob
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        currentBlob = blob;
+        const imageUrl = URL.createObjectURL(blob);
         
-        // Convert to base64
-        let binary = '';
-        for (let i = 0; i < chunkBytes.length; i++) {
-          binary += String.fromCharCode(chunkBytes[i]);
+        // Load into modal preview
+        document.getElementById('previewImg').src = imageUrl;
+        document.getElementById('previewModal').classList.remove('hidden');
+        document.getElementById('previewModal').classList.add('flex');
+      }, 'image/jpeg', 0.92);
+    }
+
+    // Close preview modal
+    function closePreview() {
+      document.getElementById('previewModal').classList.add('hidden');
+      document.getElementById('previewModal').classList.remove('flex');
+    }
+
+    // 4. Share photo via Native Web Share API (WhatsApp, Drive, Gmail, etc.)
+    async function sharePhoto() {
+      if (!currentBlob) return;
+
+      const filename = `DocScan_${new Date().toISOString().slice(0,10)}_${Math.floor(Math.random()*1000)}.jpg`;
+      const file = new File([currentBlob], filename, { type: 'image/jpeg' });
+
+      // Check browser support for sharing files
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: 'Scanned Document',
+            text: 'Here is the scanned document photo.',
+            files: [file]
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.error('Sharing failed:', err);
+            fallbackShareOrDownload(file);
+          }
         }
-        const b64 = btoa(binary);
-
-        // Protocol packet payload format:
-        // DEC1|SessionID|BlockIndex|TotalBlocks|FileName|FileType|FileSize|Base64Chunk
-        const packetStr = `DEC1|${txSessionId}|${blockIdx}|${Math.ceil(totalSize / chunkSize)}|${encodeURIComponent(txFileName)}|${txFileType}|${totalSize}|${b64}`;
-        txChunks.push(packetStr);
-
-        offset += chunkSize;
-        blockIdx++;
-      }
-
-      // Update Sender UI state
-      document.getElementById('txPlaceholder').classList.add('hidden');
-      const toggleBtn = document.getElementById('txToggleBtn');
-      toggleBtn.disabled = false;
-      toggleBtn.className = "w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 cursor-pointer";
-      
-      statSession.textContent = txSessionId;
-      statBlockLen.textContent = chunkSize;
-      statPayload.textContent = (totalSize / 1024).toFixed(1);
-
-      // Init QR code container if needed
-      const qrContainer = document.getElementById('qrcode');
-      qrContainer.innerHTML = '';
-      txQrGenerator = new QRCode(qrContainer, {
-        width: 240,
-        height: 240,
-        correctLevel: QRCode.CorrectLevel.L
-      });
-
-      txCurrentChunkIdx = 0;
-      renderCurrentTxFrame();
-    }
-
-    function updateTxConfig() {
-      if (txFileBuffer) {
-        sliceAndInitTx();
-      }
-    }
-
-    function renderCurrentTxFrame() {
-      if (!txChunks.length || !txQrGenerator) return;
-
-      const frameData = txChunks[txCurrentChunkIdx];
-      txQrGenerator.makeCode(frameData);
-
-      // Update telemetry readout for TX
-      statFrames.textContent = `${txCurrentChunkIdx + 1}/${txChunks.length}/0`;
-      const pct = Math.round(((txCurrentChunkIdx + 1) / txChunks.length) * 100);
-      progressBar.style.width = pct + '%';
-      progressLabel.innerHTML = `<i class="fa-solid fa-satellite-dish text-amber-500 mr-1"></i> TRANSMITTING: FRAME ${txCurrentChunkIdx + 1} OF ${txChunks.length}`;
-    }
-
-    function toggleTransmission() {
-      if (txIsPlaying) {
-        stopTransmission();
       } else {
-        startTransmission();
+        // Fallback for desktop or non-supported browsers
+        fallbackShareOrDownload(file);
       }
     }
 
-    function startTransmission() {
-      if (!txChunks.length) return;
-      txIsPlaying = true;
-      const fps = parseInt(document.getElementById('fpsSelect').value);
-      const intervalMs = 1000 / fps;
-
-      const toggleBtn = document.getElementById('txToggleBtn');
-      toggleBtn.innerHTML = `<i class="fa-solid fa-pause"></i> PAUSE TRANSMISSION`;
-      toggleBtn.className = "w-full py-2 bg-amber-500/80 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 cursor-pointer";
-
-      statCapFps.textContent = fps;
-      statDecFps.textContent = fps.toFixed(1);
-      setLockStatus(true);
-
-      txIntervalId = setInterval(() => {
-        txCurrentChunkIdx = (txCurrentChunkIdx + 1) % txChunks.length;
-        renderCurrentTxFrame();
-      }, intervalMs);
+    function fallbackShareOrDownload(file) {
+      alert("Direct app-sharing is not natively supported by this browser. Initiating direct JPEG download instead.");
+      downloadPhoto();
     }
 
-    function stopTransmission() {
-      txIsPlaying = false;
-      if (txIntervalId) clearInterval(txIntervalId);
-      const toggleBtn = document.getElementById('txToggleBtn');
-      if (toggleBtn) {
-        toggleBtn.innerHTML = `<i class="fa-solid fa-play"></i> START TRANSMITTING`;
-        if (txChunks.length) {
-          toggleBtn.className = "w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 cursor-pointer";
-        }
-      }
-      setLockStatus(false);
-    }
-
-    // Helper: Load a sample text payload for testing without uploading a real file
-    function loadSampleFile() {
-      switchMode('tx');
-      const text = "DECIMEN OPTICAL TRANSFER DEMO\n\nThis is a sample payload sent over an optical air-gap using animated high-density fountain QR codes!\n\nNo Wi-Fi, No Bluetooth, No Cellular required.";
-      const encoder = new TextEncoder();
-      txFileBuffer = encoder.encode(text);
-      txFileName = "sample_data.txt";
-      txFileType = "text/plain";
-      
-      // Update file input label preview
-      document.getElementById('fileInput').value = '';
-      sliceAndInitTx();
+    // 5. Download JPEG file directly
+    function downloadPhoto() {
+      if (!currentBlob) return;
+      const a = document.createElement('a');
+      const filename = `DocScan_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
+      a.href = URL.createObjectURL(currentBlob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   </script>
 </body>
 </html>
-
+```
